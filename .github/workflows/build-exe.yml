@@ -1,0 +1,36 @@
+name: Compilar VerificadorEmails.exe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/verifier_app.py"
+      - ".github/workflows/build-exe.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: |
+          pip install requests dnspython openpyxl pyinstaller
+
+      - name: Compilar el .exe
+        working-directory: desktop
+        run: |
+          pyinstaller --onefile --windowed --name VerificadorEmails verifier_app.py
+
+      - name: Subir el .exe como resultado descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: VerificadorEmails-windows
+          path: desktop/dist/VerificadorEmails.exe
