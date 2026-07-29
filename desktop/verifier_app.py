@@ -41,7 +41,7 @@ import openpyxl
 # ---------------------------------------------------------------------------
 # Configuración — apunta esto a tu backend real desplegado
 # ---------------------------------------------------------------------------
-API_BASE = "https://TU-BACKEND.onrender.com"
+API_BASE = "https://verificadoremails-api.onrender.com"
 
 FROM_ADDRESS = "verify@tudominio.com"   # cámbialo por un dominio que controles
 HELO_DOMAIN = "tudominio.com"
