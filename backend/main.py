@@ -7,6 +7,7 @@ import os
 import io
 import csv
 import uuid
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
@@ -273,13 +274,21 @@ def verify_batch(
     new_balance = user["credits"] - len(emails)
     db().table("users").update({"credits": new_balance}).eq("email", user["email"]).execute()
 
+    # Privacidad: no persistimos los emails ni resultados individuales en la
+    # base de datos, solo un conteo agregado por estado (igual que la app de
+    # escritorio). Los resultados completos SÍ se devuelven en esta respuesta
+    # para que el usuario pueda descargar su CSV justo después de verificar,
+    # pero nunca quedan guardados en Supabase.
+    status_counts = dict(Counter(r["status"] for r in results))
+
     job = {
-        "id":           str(uuid.uuid4()),
-        "user_email":   user["email"],
-        "filename":     file.filename,
-        "total_emails": len(emails),
-        "results":      results,
-        "source":       "web",
+        "id":            str(uuid.uuid4()),
+        "user_email":    user["email"],
+        "filename":      file.filename,
+        "total_emails":  len(emails),
+        "results":       None,
+        "status_counts": status_counts,
+        "source":        "web",
     }
     db().table("jobs").insert(job).execute()
 
@@ -346,7 +355,12 @@ def download_job(job_id: str, authorization: str = Header(None)):
     job = res.data[0]
 
     if not job.get("results"):
-        raise HTTPException(409, "Este lote fue verificado localmente. El detalle solo existe en tu computadora.")
+        raise HTTPException(
+            409,
+            "Este lote no tiene detalle disponible: por privacidad, solo se guarda el conteo "
+            "agregado, no los emails ni resultados individuales. Descarga el CSV justo después "
+            "de verificar, desde la pantalla de resultados."
+        )
 
     buf = io.StringIO()
     writer = csv.writer(buf)
