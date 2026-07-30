@@ -376,10 +376,13 @@ $('loginBtn').onclick = async () => {
   $('loginBtn').disabled = true;
   $('loginBtn').textContent = 'Entrando...';
   try {
-    const form = new FormData();
-    form.append('email', email);
-    form.append('password', password);
-    const res  = await fetch(`${API_BASE}/api/auth/login`, { method:'POST', body: form });
+    const body = new URLSearchParams();
+    body.append('email', email);
+    body.append('password', password);
+    const res  = await fetch(`${API_BASE}/api/auth/login`, {
+      method:'POST', body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
     currentToken = data.access_token;
@@ -414,10 +417,13 @@ $('registerBtn').onclick = async () => {
   $('registerBtn').disabled = true;
   $('registerBtn').textContent = 'Creando cuenta...';
   try {
-    const form = new FormData();
-    form.append('email', email);
-    form.append('password', pass1);
-    const res  = await fetch(`${API_BASE}/api/auth/register`, { method:'POST', body: form });
+    const body = new URLSearchParams();
+    body.append('email', email);
+    body.append('password', pass1);
+    const res  = await fetch(`${API_BASE}/api/auth/register`, {
+      method:'POST', body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
     alert('✅ ' + data.message);
