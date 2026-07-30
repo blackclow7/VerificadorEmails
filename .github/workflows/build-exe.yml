@@ -1,13 +1,12 @@
 name: Compilar VerificadorEmails.exe
 
-# Se puede lanzar manualmente desde la pestaña "Actions" de GitHub,
-# o automáticamente cada vez que cambie desktop/verifier_app.py
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
       - "desktop/verifier_app.py"
+      - "desktop/installer.iss"
       - ".github/workflows/build-exe.yml"
 
 jobs:
@@ -22,17 +21,25 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Instalar dependencias
+      - name: Instalar dependencias Python
         run: |
           pip install requests openpyxl keyring pyinstaller
 
-      - name: Compilar el .exe
+      - name: Compilar el .exe con PyInstaller
         working-directory: desktop
         run: |
           pyinstaller --onefile --windowed --name VerificadorEmails verifier_app.py
 
-      - name: Subir el .exe como resultado descargable
+      - name: Instalar Inno Setup
+        run: |
+          choco install innosetup --yes
+
+      - name: Compilar instalador con Inno Setup
+        run: |
+          iscc "desktop\installer.iss"
+
+      - name: Subir instalador como resultado descargable
         uses: actions/upload-artifact@v4
         with:
-          name: VerificadorEmails-windows
-          path: desktop/dist/VerificadorEmails.exe
+          name: VerificadorEmails-Instalador-Windows
+          path: desktop\Output\VerificadorEmails_Setup.exe
