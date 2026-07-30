@@ -1,5 +1,7 @@
 name: Compilar VerificadorEmails.exe
 
+# Se puede lanzar manualmente desde la pestaña "Actions" de GitHub,
+# o automáticamente cada vez que cambie desktop/verifier_app.py
 on:
   workflow_dispatch:
   push:
@@ -22,27 +24,12 @@ jobs:
 
       - name: Instalar dependencias
         run: |
-          pip install requests dnspython openpyxl pyinstaller
+          pip install requests openpyxl keyring pyinstaller
 
       - name: Compilar el .exe
         working-directory: desktop
         run: |
-          pip install pyinstaller
-          pyinstaller --onefile --windowed --name VerificadorEmails `
-            --hidden-import=dns `
-            --hidden-import=dns.resolver `
-            --hidden-import=dns.rdatatype `
-            --hidden-import=dns.rdataclass `
-            --hidden-import=dns.name `
-            --hidden-import=dns.message `
-            --hidden-import=dns.query `
-            --hidden-import=dns.exception `
-            --hidden-import=dns.rdtypes `
-            --hidden-import=dns.rdtypes.ANY `
-            --hidden-import=dns.rdtypes.ANY.MX `
-            --hidden-import=dns.rdtypes.mxbase `
-            --collect-all=dns `
-            verifier_app.py
+          pyinstaller --onefile --windowed --name VerificadorEmails verifier_app.py
 
       - name: Subir el .exe como resultado descargable
         uses: actions/upload-artifact@v4
