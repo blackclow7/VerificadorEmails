@@ -36,7 +36,6 @@ from tkinter import ttk, filedialog, messagebox
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
-import dns.resolver
 import openpyxl
 
 # ---------------------------------------------------------------------------
@@ -122,44 +121,66 @@ MX_CACHE_LOCK = threading.Lock()
 
 def get_mx_records(domain, timeout=6):
     """
-    Intenta resolver MX usando el DNS del sistema primero.
-    Si falla (común en .exe compilados con PyInstaller), reintenta con
-    Google (8.8.8.8) y Cloudflare (1.1.1.1) como fallback.
+    Resuelve registros MX usando nslookup (disponible en todo Windows sin
+    dependencias externas). Esto evita los problemas de dnspython con
+    PyInstaller. Prueba primero con el DNS del sistema, luego con 8.8.8.8.
     Devuelve: lista de hosts | None (NXDOMAIN) | [] (sin MX) | ("ERROR", detalle)
     """
+    import subprocess, re as _re
+
     with MX_CACHE_LOCK:
         if domain in MX_CACHE:
             return MX_CACHE[domain]
 
-    nameserver_sets = [
-        None,                          # resolver del sistema
-        ["8.8.8.8", "8.8.4.4"],        # Google DNS
-        ["1.1.1.1", "1.0.0.1"],        # Cloudflare DNS
-    ]
-    result     = ("ERROR", "No se pudo consultar ningún servidor DNS")
-    last_error = ""
-
-    for nameservers in nameserver_sets:
+    def _run_nslookup(domain, server=None):
+        cmd = ["nslookup", "-type=MX", domain]
+        if server:
+            cmd.append(server)
         try:
-            resolver = dns.resolver.Resolver(configure=(nameservers is None))
-            if nameservers:
-                resolver.nameservers = nameservers
-            resolver.timeout  = timeout
-            resolver.lifetime = timeout
-            answers = resolver.resolve(domain, "MX")
-            hosts   = sorted([(r.preference, str(r.exchange).rstrip(".")) for r in answers])
-            result  = [h for _, h in hosts]
-            break
-        except dns.resolver.NXDOMAIN:
+            out = subprocess.run(
+                cmd, capture_output=True, text=True,
+                timeout=timeout, creationflags=0x08000000  # NO_WINDOW en Windows
+            )
+            return out.stdout + out.stderr
+        except Exception as e:
+            return f"ERROR: {e}"
+
+    result = ("ERROR", "No se pudo resolver MX")
+
+    for server in [None, "8.8.8.8", "1.1.1.1"]:
+        output = _run_nslookup(domain, server)
+
+        # Dominio no existe
+        if any(x in output.lower() for x in [
+            "non-existent domain", "nxdomain", "can't find",
+            "no existe", "no encontrado"
+        ]):
             result = None
             break
-        except dns.resolver.NoAnswer:
+
+        # Extraer hosts MX de la salida de nslookup
+        mx_lines = [l for l in output.splitlines()
+                    if "mail exchanger" in l.lower() or "MX preference" in l]
+
+        if mx_lines:
+            hosts = []
+            for line in mx_lines:
+                # Formato: "domain MX preference = N, mail exchanger = host"
+                # o: "mail exchanger = N host"
+                parts = line.strip().split()
+                if parts:
+                    hosts.append(parts[-1].rstrip("."))
+            if hosts:
+                result = hosts
+                break
+
+        # Sin registros MX pero dominio existe
+        if "no records" in output.lower() or (
+            "answer" not in output.lower() and "exchanger" not in output.lower()
+            and "error" not in output.lower() and len(output) > 10
+        ):
             result = []
             break
-        except Exception as e:
-            last_error = str(e)
-            result = ("ERROR", last_error)
-            continue  # probar el siguiente conjunto de DNS
 
     with MX_CACHE_LOCK:
         MX_CACHE[domain] = result
@@ -479,10 +500,46 @@ class App(tk.Tk):
 
         # Barra de progreso y estado
         self.progress = ttk.Progressbar(self.main_frame, mode="determinate")
-        self.progress.pack(fill="x", pady=(0, 6))
+        self.progress.pack(fill="x", pady=(0, 4))
+
+        # Panel de estadísticas en vivo
+        stats_frame = tk.Frame(self.main_frame, bg="#1B3055", padx=12, pady=8)
+        stats_frame.pack(fill="x", pady=(0, 6))
+
+        # Fila 1: progreso + tiempo
+        row1 = tk.Frame(stats_frame, bg="#1B3055")
+        row1.pack(fill="x")
+        self.lbl_progreso   = tk.Label(row1, text="—", font=("Consolas", 10, "bold"),
+                                        fg="#F6EFE2", bg="#1B3055")
+        self.lbl_progreso.pack(side="left")
+        self.lbl_velocidad  = tk.Label(row1, text="", font=("Consolas", 10),
+                                        fg="#B08D57", bg="#1B3055")
+        self.lbl_velocidad.pack(side="left", padx=(16, 0))
+        self.lbl_tiempo     = tk.Label(row1, text="", font=("Consolas", 10),
+                                        fg="#B08D57", bg="#1B3055")
+        self.lbl_tiempo.pack(side="right")
+        self.lbl_eta        = tk.Label(row1, text="", font=("Consolas", 10),
+                                        fg="#B08D57", bg="#1B3055")
+        self.lbl_eta.pack(side="right", padx=(0, 16))
+
+        # Fila 2: contadores por estado
+        row2 = tk.Frame(stats_frame, bg="#1B3055")
+        row2.pack(fill="x", pady=(4, 0))
+        self.lbl_counts = {}
+        for status, color in [
+            ("Accepted", "#3B7A57"), ("Catch-All", "#1B7A8C"),
+            ("Rejected", "#C1272D"), ("No MX",     "#C1272D"),
+            ("SPAM Block","#8B3A8B"), ("Timeout",  "#B08D57"),
+            ("Greylisted","#B08D57"), ("MX Error", "#C1272D"),
+        ]:
+            lbl = tk.Label(row2, text=f"{status}: 0",
+                           font=("Consolas", 9), fg=color, bg="#1B3055", padx=6)
+            lbl.pack(side="left")
+            self.lbl_counts[status] = lbl
+
         self.status_label = tk.Label(self.main_frame, text="",
                                       font=("Consolas", 10), fg="#B08D57", bg="#12213B")
-        self.status_label.pack(anchor="w", pady=(0, 6))
+        self.status_label.pack(anchor="w", pady=(0, 4))
 
         # Tabla de resultados
         columns = ("email", "status", "detalle", "toxicidad")
@@ -568,7 +625,18 @@ class App(tk.Tk):
         self.verify_btn.config(state="disabled")
         self.export_btn.config(state="disabled")
         self.tree.delete(*self.tree.get_children())
-        self.results = []
+        self.results       = []
+        self._t_start      = None   # se setea cuando llega el primer resultado
+        self._live_counts  = {s: 0 for s in self.lbl_counts}
+        self._total_emails = 0
+
+        # Resetear panel de stats
+        self.lbl_progreso.config(text="Iniciando...")
+        self.lbl_velocidad.config(text="")
+        self.lbl_tiempo.config(text="")
+        self.lbl_eta.config(text="")
+        for s, lbl in self.lbl_counts.items():
+            lbl.config(text=f"{s}: 0")
 
         emails = extract_emails_from_file(self.selected_file)
         if not emails:
@@ -592,6 +660,7 @@ class App(tk.Tk):
             self.verify_btn.config(state="normal")
             return
 
+        self._total_emails = len(emails)
         self.progress.config(maximum=len(emails), value=0)
         self.status_label.config(
             text=f"Verificando {len(emails)} emails por SMTP real...")
@@ -612,13 +681,46 @@ class App(tk.Tk):
         self.progress_queue.put(("done", None, None, None))
 
     def _poll_progress(self):
+        import time as _time
         try:
             while True:
                 kind, done, total, result = self.progress_queue.get_nowait()
                 if kind == "progress":
+                    # Iniciar timer en el primer resultado
+                    if self._t_start is None:
+                        self._t_start = _time.time()
+
                     self.progress.config(value=done)
-                    self.status_label.config(
-                        text=f"Verificando... {done}/{total}")
+
+                    # Tiempo transcurrido
+                    elapsed   = _time.time() - self._t_start
+                    vel       = done / elapsed if elapsed > 0 else 0
+                    restantes = total - done
+                    eta_seg   = restantes / vel if vel > 0 else 0
+
+                    def _fmt(s):
+                        s = int(s)
+                        m, sec = divmod(s, 60)
+                        return f"{m}m {sec:02d}s" if m else f"{sec}s"
+
+                    pct = (done / total) * 100
+                    self.lbl_progreso.config(
+                        text=f"{done}/{total}  ({pct:.1f}%)")
+                    self.lbl_velocidad.config(
+                        text=f"⚡ {vel:.1f} emails/s")
+                    self.lbl_tiempo.config(
+                        text=f"⏱ {_fmt(elapsed)}")
+                    self.lbl_eta.config(
+                        text=f"ETA {_fmt(eta_seg)}" if done < total else "ETA —")
+
+                    # Contador por estado
+                    st = result["status"]
+                    if st in self._live_counts:
+                        self._live_counts[st] += 1
+                        self.lbl_counts[st].config(
+                            text=f"{st}: {self._live_counts[st]}")
+
+                    # Insertar en tabla
                     tag = result["status"]
                     self.tree.insert("", "end",
                                       values=(result["email"], result["status"],
@@ -632,8 +734,19 @@ class App(tk.Tk):
         self.after(100, self._poll_progress)
 
     def _finish_verification(self):
+        import time as _time
+        elapsed = _time.time() - self._t_start if self._t_start else 0
+        m, s    = divmod(int(elapsed), 60)
+        tiempo  = f"{m}m {s:02d}s" if m else f"{s}s"
+        total   = len(self.results)
+        vel     = total / elapsed if elapsed > 0 else 0
+
+        self.lbl_progreso.config(text=f"{total}/{total}  (100%)")
+        self.lbl_velocidad.config(text=f"⚡ {vel:.1f} emails/s")
+        self.lbl_tiempo.config(text=f"⏱ {tiempo}")
+        self.lbl_eta.config(text="✅ Completado")
         self.status_label.config(
-            text=f"Listo. {len(self.results)} emails verificados. Reportando...")
+            text=f"Verificación completada — {total} emails en {tiempo}")
 
         status_counts = {}
         for r in self.results:
