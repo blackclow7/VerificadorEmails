@@ -31,8 +31,8 @@ Source: "dist\VerificadorEmails.exe"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{group}\Correo Certificado"; Filename: "{app}\VerificadorEmails.exe"
 Name: "{group}\Desinstalar Correo Certificado"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Correo Certificado"; Filename: "{app}\VerificadorEmails.exe"; Tasks: desktopicon
-Name: "{userstartmenu}\Correo Certificado"; Filename: "{app}\VerificadorEmails.exe"; Tasks: quicklaunchicon
+Name: "{commondesktop}\Correo Certificado"; Filename: "{app}\VerificadorEmails.exe"; Tasks: desktopicon
+Name: "{commonstartmenu}\Correo Certificado"; Filename: "{app}\VerificadorEmails.exe"; Tasks: quicklaunchicon
 
 [Run]
 Filename: "{app}\VerificadorEmails.exe"; Description: "Ejecutar Correo Certificado ahora"; Flags: nowait postinstall skipifsilent
