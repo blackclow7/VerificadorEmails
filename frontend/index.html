@@ -565,6 +565,7 @@ $('resetSubmitBtn').onclick = async () => {
     $('resetSubmitBtn').textContent = 'Cambiar contraseña';
   }
 };
+$('logoutBtn').onclick = async () => {
   try { await fetch(`${API_BASE}/api/auth/logout`, { method:'POST', headers: authHeaders() }); } catch(e){}
   clearSession();
   showLogin();
