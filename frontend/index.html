@@ -661,13 +661,12 @@ async function loadHistory(){
     return;
   }
   container.innerHTML = jobs.map(j => {
-    const isDesktop  = j.source === 'desktop';
-    const countsText = isDesktop && j.status_counts
+    const countsText = j.status_counts
       ? Object.entries(j.status_counts).map(([k,v]) => `${k}: ${v}`).join(' · ')
       : '';
-    const rightSide  = isDesktop
-      ? `<span style="opacity:.6;">Verificado localmente (sin copia en servidor)</span>`
-      : `<a href="${API_BASE}/api/jobs/${j.id}/download" style="color:var(--ink-2);" onclick="downloadJob('${j.id}',event)">Descargar</a>`;
+    // Por privacidad, ningún lote (web o escritorio) guarda resultados
+    // individuales, así que nunca hay nada descargable desde el historial.
+    const rightSide = `<span style="opacity:.6;">Verificado, sin copia en servidor</span>`;
     return `<div class="job-row">
       <span>${j.filename} · ${j.total_emails} emails${countsText ? ' · '+countsText : ''} · ${new Date(j.created_at).toLocaleString()}</span>
       ${rightSide}
