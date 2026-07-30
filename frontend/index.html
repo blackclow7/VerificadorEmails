@@ -232,14 +232,33 @@
     <div class="credits-badge" id="creditsBadge">
       Inicia sesión para ver tu saldo
     </div>
+    <button class="secondary" id="logoutBtn" style="display:none;margin-left:10px;font-size:12px;padding:6px 12px;" onclick="document.getElementById('logoutBtn').style.display='none'">Cerrar sesión</button>
   </header>
 
   <!-- LOGIN -->
   <section class="panel" id="loginPanel">
     <h2>01 · Identifícate</h2>
     <input type="email" id="emailInput" placeholder="tu@empresa.com">
-    <button id="loginBtn">Entrar / Crear cuenta</button>
-    <p class="empty-note" style="margin-top:10px;">Cuenta nueva = créditos de prueba gratis incluidos.</p>
+    <input type="password" id="passwordInput" placeholder="Contraseña" style="width:100%;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:14px;border:1.5px solid var(--ink);border-radius:2px;background:#fff;margin-bottom:12px;">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <button id="loginBtn">Entrar</button>
+      <button class="secondary" id="showRegisterBtn">Crear cuenta nueva</button>
+    </div>
+    <p class="empty-note" style="margin-top:10px;">¿Olvidaste tu contraseña? <a href="#" id="forgotBtn" style="color:var(--ink);">Recupérala aquí</a></p>
+    <div id="errorBox"></div>
+  </section>
+
+  <!-- REGISTRO -->
+  <section class="panel hidden" id="registerPanel">
+    <h2>01 · Crear cuenta</h2>
+    <input type="email" id="regEmailInput" placeholder="tu@empresa.com">
+    <input type="password" id="regPassInput" placeholder="Contraseña (mínimo 8 caracteres)" style="width:100%;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:14px;border:1.5px solid var(--ink);border-radius:2px;background:#fff;margin-bottom:12px;">
+    <input type="password" id="regPass2Input" placeholder="Repetir contraseña" style="width:100%;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:14px;border:1.5px solid var(--ink);border-radius:2px;background:#fff;margin-bottom:12px;">
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button id="registerBtn">Crear cuenta</button>
+      <button class="secondary" id="showLoginBtn">Ya tengo cuenta</button>
+    </div>
+    <p class="empty-note" style="margin-top:10px;">Recibirás un email de confirmación antes de poder iniciar sesión.</p>
   </section>
 
   <!-- UPLOAD -->
@@ -283,8 +302,272 @@
 </div>
 
 <script>
-// ⚠️ Configura aquí la URL de tu backend desplegado (Render, etc.)
 const API_BASE = "https://verificadoremails-api.onrender.com";
+
+let currentToken = null;
+let currentEmail = null;
+let lastResults  = null;
+let lastFilename = null;
+
+const $ = (id) => document.getElementById(id);
+
+// ── Persistencia de sesión ──────────────────────────────────────────────────
+function saveSession(token, email){
+  try { localStorage.setItem('vmail_token', token); localStorage.setItem('vmail_email', email); } catch(e){}
+}
+function loadSession(){
+  try {
+    const t = localStorage.getItem('vmail_token');
+    const e = localStorage.getItem('vmail_email');
+    if (t && e){ currentToken = t; currentEmail = e; }
+  } catch(e){}
+}
+function clearSession(){
+  currentToken = null; currentEmail = null;
+  try { localStorage.removeItem('vmail_token'); localStorage.removeItem('vmail_email'); } catch(e){}
+}
+
+function authHeaders(){
+  return { 'Authorization': `Bearer ${currentToken}` };
+}
+
+function showError(msg){ $('errorBox').innerHTML = `<div class="error-box">${msg}</div>`; }
+function clearError(){ $('errorBox').innerHTML = ''; }
+
+function statusClass(s){
+  const bad  = ["Rejected","No MX","Dominio inexistente","Sin MX","MX Error","Formato inválido"];
+  const warn = ["Timeout","SPAM Block","Limited","Greylisted"];
+  if (bad.includes(s))  return "st-bad";
+  if (warn.includes(s)) return "st-warn";
+  return "st-ok";
+}
+function toxClass(score){
+  if (score >= 4) return "tox-high";
+  if (score >= 1) return "tox-low";
+  return "tox-0";
+}
+
+// ── Mostrar formulario de login o registro ──────────────────────────────────
+function showLogin(){
+  $('loginPanel').classList.remove('hidden');
+  $('uploadPanel').classList.add('hidden');
+  $('historyPanel').classList.add('hidden');
+  $('resultsPanel').classList.add('hidden');
+  $('registerPanel').classList.add('hidden');
+}
+function showApp(email, credits){
+  currentEmail = email;
+  $('creditsBadge').innerHTML = `Créditos disponibles<b>${credits}</b>`;
+  $('logoutBtn').style.display = 'inline-block';
+  $('loginPanel').classList.add('hidden');
+  $('registerPanel').classList.add('hidden');
+  $('uploadPanel').classList.remove('hidden');
+  $('historyPanel').classList.remove('hidden');
+  loadHistory();
+}
+
+// ── Login ───────────────────────────────────────────────────────────────────
+$('loginBtn').onclick = async () => {
+  const email    = $('emailInput').value.trim().toLowerCase();
+  const password = $('passwordInput').value;
+  if (!email || !email.includes('@')){ showError('Ingresa un email válido'); return; }
+  if (!password){ showError('Ingresa tu contraseña'); return; }
+  clearError();
+  $('loginBtn').disabled = true;
+  $('loginBtn').textContent = 'Entrando...';
+  try {
+    const form = new FormData();
+    form.append('email', email);
+    form.append('password', password);
+    const res  = await fetch(`${API_BASE}/api/auth/login`, { method:'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+    currentToken = data.access_token;
+    saveSession(data.access_token, data.email);
+    showApp(data.email, data.credits);
+  } catch(e){
+    showError(e.message);
+  } finally {
+    $('loginBtn').disabled = false;
+    $('loginBtn').textContent = 'Entrar';
+  }
+};
+
+// ── Registro ────────────────────────────────────────────────────────────────
+$('showRegisterBtn').onclick = () => {
+  $('loginPanel').classList.add('hidden');
+  $('registerPanel').classList.remove('hidden');
+};
+$('showLoginBtn').onclick = () => {
+  $('registerPanel').classList.add('hidden');
+  $('loginPanel').classList.remove('hidden');
+};
+
+$('registerBtn').onclick = async () => {
+  const email   = $('regEmailInput').value.trim().toLowerCase();
+  const pass1   = $('regPassInput').value;
+  const pass2   = $('regPass2Input').value;
+  if (!email || !email.includes('@')){ showError('Email inválido'); return; }
+  if (pass1.length < 8){ showError('La contraseña debe tener al menos 8 caracteres'); return; }
+  if (pass1 !== pass2){ showError('Las contraseñas no coinciden'); return; }
+  clearError();
+  $('registerBtn').disabled = true;
+  $('registerBtn').textContent = 'Creando cuenta...';
+  try {
+    const form = new FormData();
+    form.append('email', email);
+    form.append('password', pass1);
+    const res  = await fetch(`${API_BASE}/api/auth/register`, { method:'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+    alert('✅ ' + data.message);
+    $('registerPanel').classList.add('hidden');
+    $('loginPanel').classList.remove('hidden');
+    $('emailInput').value = email;
+  } catch(e){
+    showError(e.message);
+  } finally {
+    $('registerBtn').disabled = false;
+    $('registerBtn').textContent = 'Crear cuenta';
+  }
+};
+
+// ── Logout ──────────────────────────────────────────────────────────────────
+$('logoutBtn').onclick = async () => {
+  try { await fetch(`${API_BASE}/api/auth/logout`, { method:'POST', headers: authHeaders() }); } catch(e){}
+  clearSession();
+  showLogin();
+};
+
+// ── Verificación ────────────────────────────────────────────────────────────
+let selectedFile = null;
+const dropzone  = $('dropzone');
+const fileInput = $('fileInput');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault(); dropzone.classList.remove('drag');
+  if (e.dataTransfer.files.length){
+    selectedFile = e.dataTransfer.files[0];
+    $('filenameTag').innerHTML = `<span class="filename-tag">${selectedFile.name}</span>`;
+    $('verifyBtn').disabled = false;
+  }
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length){
+    selectedFile = fileInput.files[0];
+    $('filenameTag').innerHTML = `<span class="filename-tag">${selectedFile.name}</span>`;
+    $('verifyBtn').disabled = false;
+  }
+});
+
+$('verifyBtn').onclick = async () => {
+  if (!selectedFile || !currentToken) return;
+  clearError();
+  $('verifyBtn').disabled = true;
+  $('verifyBtn').innerHTML = `<span class="spinner"></span>Verificando…`;
+  const form = new FormData();
+  form.append('file', selectedFile);
+  try {
+    const res = await fetch(`${API_BASE}/api/verify`, {
+      method:'POST', body: form, headers: authHeaders()
+    });
+    if (!res.ok){ const t = await res.text(); throw new Error(t); }
+    const data = await res.json();
+    lastResults  = data.resultados;
+    lastFilename = selectedFile.name;
+    renderResults(data);
+    $('creditsBadge').innerHTML = `Créditos disponibles<b>${data.credits_restantes}</b>`;
+    loadHistory();
+  } catch(e){
+    showError('Error al verificar: ' + e.message);
+  } finally {
+    $('verifyBtn').disabled = false;
+    $('verifyBtn').innerHTML = 'Verificar lote';
+  }
+};
+
+function renderResults(data){
+  $('resultsPanel').classList.remove('hidden');
+  $('summaryCount').textContent = `${data.total} emails procesados · ${data.credits_restantes} créditos restantes`;
+  const body = $('resultsBody');
+  body.innerHTML = '';
+  data.resultados.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.email}</td>
+      <td><span class="status-stamp ${statusClass(r.status)}">${r.status}</span></td>
+      <td>${r.detalle}</td>
+      <td class="${toxClass(r.toxicidad)}">${r.toxicidad}/5</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+$('downloadBtn').onclick = () => {
+  if (!lastResults) return;
+  let csv = 'email,status,detalle,toxicidad,señales_toxicidad\n';
+  lastResults.forEach(r => {
+    csv += `"${r.email}","${r.status}","${r.detalle}",${r.toxicidad},"${r.señales_toxicidad}"\n`;
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `${lastFilename || 'resultados'}_verificado.csv`; a.click();
+};
+
+async function loadHistory(){
+  if (!currentToken) return;
+  const res = await fetch(`${API_BASE}/api/jobs/history`, { headers: authHeaders() });
+  if (!res.ok) return;
+  const jobs      = await res.json();
+  const container = $('historyBody');
+  if (!jobs.length){
+    container.innerHTML = '<p class="empty-note">Aún no hay lotes procesados.</p>';
+    return;
+  }
+  container.innerHTML = jobs.map(j => {
+    const isDesktop  = j.source === 'desktop';
+    const countsText = isDesktop && j.status_counts
+      ? Object.entries(j.status_counts).map(([k,v]) => `${k}: ${v}`).join(' · ')
+      : '';
+    const rightSide  = isDesktop
+      ? `<span style="opacity:.6;">Verificado localmente (sin copia en servidor)</span>`
+      : `<a href="${API_BASE}/api/jobs/${j.id}/download" style="color:var(--ink-2);" onclick="downloadJob('${j.id}',event)">Descargar</a>`;
+    return `<div class="job-row">
+      <span>${j.filename} · ${j.total_emails} emails${countsText ? ' · '+countsText : ''} · ${new Date(j.created_at).toLocaleString()}</span>
+      ${rightSide}
+    </div>`;
+  }).join('');
+}
+
+async function downloadJob(jobId, e){
+  e.preventDefault();
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}/download`, { headers: authHeaders() });
+  if (!res.ok){ alert('No se pudo descargar'); return; }
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'resultados.csv'; a.click();
+}
+
+// ── Arranque ─────────────────────────────────────────────────────────────────
+loadSession();
+if (currentToken && currentEmail){
+  // Verificar que el token sigue siendo válido
+  fetch(`${API_BASE}/api/user/me`, { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (data) showApp(data.email, data.credits);
+      else { clearSession(); showLogin(); }
+    })
+    .catch(() => { clearSession(); showLogin(); });
+} else {
+  showLogin();
+}
+</script>
 
 let currentEmail = null;
 let lastResults = null;
