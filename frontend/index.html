@@ -248,6 +248,28 @@
     <div id="errorBox"></div>
   </section>
 
+  <!-- RECUPERAR CONTRASEÑA -->
+  <section class="panel hidden" id="forgotPanel">
+    <h2>Recuperar contraseña</h2>
+    <p class="empty-note" style="margin-bottom:16px;">Ingresa tu email y te enviaremos un link para restablecer tu contraseña.</p>
+    <input type="email" id="forgotEmailInput" placeholder="tu@empresa.com">
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button id="forgotSubmitBtn">Enviar link</button>
+      <button class="secondary" id="backToLoginBtn">Volver al login</button>
+    </div>
+    <div id="forgotMsg"></div>
+  </section>
+
+  <!-- NUEVA CONTRASEÑA (después de clic en link de reset) -->
+  <section class="panel hidden" id="resetPanel">
+    <h2>Nueva contraseña</h2>
+    <p class="empty-note" style="margin-bottom:16px;">Ingresa tu nueva contraseña.</p>
+    <input type="password" id="newPassInput" placeholder="Nueva contraseña (mínimo 8 caracteres)" style="width:100%;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:14px;border:1.5px solid var(--ink);border-radius:2px;background:#fff;margin-bottom:12px;">
+    <input type="password" id="newPass2Input" placeholder="Repetir nueva contraseña" style="width:100%;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:14px;border:1.5px solid var(--ink);border-radius:2px;background:#fff;margin-bottom:12px;">
+    <button id="resetSubmitBtn">Cambiar contraseña</button>
+    <div id="resetMsg"></div>
+  </section>
+
   <!-- REGISTRO -->
   <section class="panel hidden" id="registerPanel">
     <h2>01 · Crear cuenta</h2>
@@ -354,6 +376,8 @@ function showLogin(){
   $('historyPanel').classList.add('hidden');
   $('resultsPanel').classList.add('hidden');
   $('registerPanel').classList.add('hidden');
+  $('forgotPanel').classList.add('hidden');
+  $('resetPanel').classList.add('hidden');
 }
 function showApp(email, credits){
   currentEmail = email;
@@ -438,8 +462,109 @@ $('registerBtn').onclick = async () => {
   }
 };
 
-// ── Logout ──────────────────────────────────────────────────────────────────
-$('logoutBtn').onclick = async () => {
+// ── Recuperar contraseña ─────────────────────────────────────────────────────
+$('forgotBtn').onclick = (e) => {
+  e.preventDefault();
+  $('loginPanel').classList.add('hidden');
+  $('forgotPanel').classList.remove('hidden');
+  $('forgotEmailInput').value = $('emailInput').value;
+};
+
+$('backToLoginBtn').onclick = () => {
+  $('forgotPanel').classList.add('hidden');
+  $('loginPanel').classList.remove('hidden');
+  $('forgotMsg').innerHTML = '';
+};
+
+$('forgotSubmitBtn').onclick = async () => {
+  const email = $('forgotEmailInput').value.trim().toLowerCase();
+  if (!email || !email.includes('@')){
+    $('forgotMsg').innerHTML = `<div class="error-box">Ingresa un email válido</div>`;
+    return;
+  }
+  $('forgotSubmitBtn').disabled = true;
+  $('forgotSubmitBtn').textContent = 'Enviando...';
+  try {
+    const body = new URLSearchParams();
+    body.append('email', email);
+    const res  = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+      method: 'POST', body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    const data = await res.json();
+    $('forgotMsg').innerHTML = `<p class="empty-note" style="margin-top:12px;color:var(--ok-green);">✅ ${data.message}</p>`;
+  } catch(e) {
+    $('forgotMsg').innerHTML = `<div class="error-box">Error al enviar: ${e.message}</div>`;
+  } finally {
+    $('forgotSubmitBtn').disabled = false;
+    $('forgotSubmitBtn').textContent = 'Enviar link';
+  }
+};
+
+// ── Reset contraseña (cuando llega desde el link del email) ──────────────────
+let resetToken = null;
+
+function checkResetToken() {
+  const hash   = window.location.hash;
+  const params = new URLSearchParams(hash.substring(1));
+  const type   = params.get('type');
+  const token  = params.get('access_token');
+  if (type === 'recovery' && token) {
+    resetToken = token;
+    // Ocultar todo y mostrar el formulario de nueva contraseña
+    $('loginPanel').classList.add('hidden');
+    $('forgotPanel').classList.add('hidden');
+    $('registerPanel').classList.add('hidden');
+    $('resetPanel').classList.remove('hidden');
+    // Limpiar el hash de la URL para que no quede visible
+    history.replaceState(null, '', window.location.pathname);
+  }
+}
+
+$('resetSubmitBtn').onclick = async () => {
+  const pass1 = $('newPassInput').value;
+  const pass2 = $('newPass2Input').value;
+  if (pass1.length < 8) {
+    $('resetMsg').innerHTML = `<div class="error-box">La contraseña debe tener al menos 8 caracteres</div>`;
+    return;
+  }
+  if (pass1 !== pass2) {
+    $('resetMsg').innerHTML = `<div class="error-box">Las contraseñas no coinciden</div>`;
+    return;
+  }
+  $('resetSubmitBtn').disabled = true;
+  $('resetSubmitBtn').textContent = 'Cambiando...';
+  try {
+    // Usar el token para actualizar la contraseña directamente en Supabase
+    const supabaseUrl = 'https://wrdnqbjfrhcqynuvoiyy.supabase.co';
+    const anonKey    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndyZG5xYmpmcmhjcXludXZvaXl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNDQwMDYsImV4cCI6MjEwMDkyMDAwNn0.h8VvsngtyV7oostNvU0sJWkxmehRALDfd_l8FdWmM9k';
+    const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+        'Authorization': `Bearer ${resetToken}`
+      },
+      body: JSON.stringify({ password: pass1 })
+    });
+    if (res.ok) {
+      $('resetMsg').innerHTML = `<p class="empty-note" style="margin-top:12px;color:var(--ok-green);">✅ Contraseña cambiada. Ya puedes iniciar sesión.</p>`;
+      setTimeout(() => {
+        $('resetPanel').classList.add('hidden');
+        $('loginPanel').classList.remove('hidden');
+        resetToken = null;
+      }, 2000);
+    } else {
+      const err = await res.json();
+      throw new Error(err.message || 'Error al cambiar contraseña');
+    }
+  } catch(e) {
+    $('resetMsg').innerHTML = `<div class="error-box">Error: ${e.message}</div>`;
+  } finally {
+    $('resetSubmitBtn').disabled = false;
+    $('resetSubmitBtn').textContent = 'Cambiar contraseña';
+  }
+};
   try { await fetch(`${API_BASE}/api/auth/logout`, { method:'POST', headers: authHeaders() }); } catch(e){}
   clearSession();
   showLogin();
@@ -560,6 +685,7 @@ async function downloadJob(jobId, e){
 }
 
 // ── Arranque ─────────────────────────────────────────────────────────────────
+checkResetToken(); // Verificar si venimos de un link de reset
 loadSession();
 if (currentToken && currentEmail){
   // Verificar que el token sigue siendo válido
