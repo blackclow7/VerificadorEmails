@@ -569,15 +569,8 @@ if (currentToken && currentEmail){
 }
 </script>
 
-let currentEmail = null;
-let lastResults = null;
-let lastFilename = null;
-
-const $ = (id) => document.getElementById(id);
-
-function showError(msg){
-  $('errorBox').innerHTML = `<div class="error-box">${msg}</div>`;
-}
+</body>
+</html>
 function clearError(){ $('errorBox').innerHTML = ''; }
 
 function statusClass(status){
