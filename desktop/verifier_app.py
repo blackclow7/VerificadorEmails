@@ -37,6 +37,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 import openpyxl
+import keyring  # para guardar el token de forma segura en Windows Credential Manager
 
 # ---------------------------------------------------------------------------
 # Configuración
@@ -383,6 +384,7 @@ class App(tk.Tk):
         self.configure(bg="#12213B")
 
         self.user_email    = None
+        self.auth_token    = None
         self.selected_file = None
         self.results       = []
         self.progress_queue = queue.Queue()
@@ -405,39 +407,98 @@ class App(tk.Tk):
                  text="Verificador de escritorio — SMTP real, puerto 25 local",
                  font=("Segoe UI", 10), fg="#B08D57", bg="#12213B").pack(pady=(0, 24))
 
-        tk.Label(self.login_frame, text="Tu email:", font=("Segoe UI", 11),
+        tk.Label(self.login_frame, text="Email:", font=("Segoe UI", 11),
                  fg="#F6EFE2", bg="#12213B").pack(anchor="w")
         self.email_entry = tk.Entry(self.login_frame, font=("Consolas", 12), width=36)
-        self.email_entry.pack(pady=(4, 16))
-        self.email_entry.bind("<Return>", lambda e: self._login())
+        self.email_entry.pack(pady=(4, 10))
 
-        tk.Button(self.login_frame, text="Entrar / Crear cuenta", command=self._login,
+        tk.Label(self.login_frame, text="Contraseña:", font=("Segoe UI", 11),
+                 fg="#F6EFE2", bg="#12213B").pack(anchor="w")
+        self.pass_entry = tk.Entry(self.login_frame, font=("Consolas", 12),
+                                    width=36, show="●")
+        self.pass_entry.pack(pady=(4, 16))
+        self.pass_entry.bind("<Return>", lambda e: self._login())
+
+        btn_frame = tk.Frame(self.login_frame, bg="#12213B")
+        btn_frame.pack()
+        tk.Button(btn_frame, text="Entrar", command=self._login,
                   bg="#C1272D", fg="white", font=("Segoe UI", 11, "bold"),
-                  relief="flat", padx=16, pady=8).pack()
+                  relief="flat", padx=16, pady=8).pack(side="left")
+        tk.Button(btn_frame, text="Crear cuenta", command=self._open_register,
+                  bg="#1B3055", fg="white", font=("Segoe UI", 10),
+                  relief="flat", padx=12, pady=8).pack(side="left", padx=(10, 0))
 
         self.login_status = tk.Label(self.login_frame, text="",
                                       font=("Segoe UI", 10), fg="#C1272D", bg="#12213B")
         self.login_status.pack(pady=(12, 0))
 
+        # Intentar restaurar sesión guardada
+        self._restore_session()
+
+    def _open_register(self):
+        import webbrowser
+        webbrowser.open("https://verificador-emails.vercel.app")
+
+    def _restore_session(self):
+        """Intenta restaurar el token guardado en el Credential Manager de Windows."""
+        try:
+            token = keyring.get_password("CorreoCertificado", "access_token")
+            email = keyring.get_password("CorreoCertificado", "user_email")
+            if token and email:
+                self.login_status.config(text="Restaurando sesión...", fg="#B08D57")
+                self.update()
+                res = requests.get(f"{API_BASE}/api/user/me",
+                                    headers={"Authorization": f"Bearer {token}"},
+                                    timeout=15)
+                if res.ok:
+                    data = self._after_login(email, token, res.json()["credits"])
+                    return
+        except Exception:
+            pass
+        try:
+            keyring.delete_password("CorreoCertificado", "access_token")
+            keyring.delete_password("CorreoCertificado", "user_email")
+        except Exception:
+            pass
+
     def _login(self):
-        email = self.email_entry.get().strip().lower()
+        email    = self.email_entry.get().strip().lower()
+        password = self.pass_entry.get()
         if not email or "@" not in email:
             self.login_status.config(text="Ingresa un email válido")
+            return
+        if not password:
+            self.login_status.config(text="Ingresa tu contraseña")
             return
         self.login_status.config(text="Conectando...", fg="#B08D57")
         self.update()
         try:
-            res = requests.post(f"{API_BASE}/api/user/login",
-                                data={"email": email}, timeout=20)
-            res.raise_for_status()
-            data = res.json()
-            self.user_email = data["email"]
-            self.login_frame.pack_forget()
-            self.main_frame.pack(fill="both", expand=True)
-            self._refresh_credits(data["credits"])
-            self._test_port25()
+            res = requests.post(f"{API_BASE}/api/auth/login",
+                                data={"email": email, "password": password},
+                                timeout=20)
+            if not res.ok:
+                detail = res.json().get("detail", res.text)
+                self.login_status.config(text=f"Error: {detail}", fg="#C1272D")
+                return
+            data  = res.json()
+            token = data["access_token"]
+            # Guardar token de forma segura
+            try:
+                keyring.set_password("CorreoCertificado", "access_token", token)
+                keyring.set_password("CorreoCertificado", "user_email", data["email"])
+            except Exception:
+                pass
+            self._after_login(data["email"], token, data["credits"])
         except Exception as e:
             self.login_status.config(text=f"No se pudo conectar: {e}", fg="#C1272D")
+
+    def _after_login(self, email, token, credits):
+        self.user_email = email
+        self.auth_token = token
+        self.login_frame.pack_forget()
+        self.main_frame.pack(fill="both", expand=True)
+        self._refresh_credits(credits)
+        self._test_port25()
 
     # ── Main ───────────────────────────────────────────────────────────────
 
@@ -500,10 +561,46 @@ class App(tk.Tk):
 
         # Barra de progreso y estado
         self.progress = ttk.Progressbar(self.main_frame, mode="determinate")
-        self.progress.pack(fill="x", pady=(0, 6))
+        self.progress.pack(fill="x", pady=(0, 4))
+
+        # Panel de estadísticas en vivo
+        stats_frame = tk.Frame(self.main_frame, bg="#1B3055", padx=12, pady=8)
+        stats_frame.pack(fill="x", pady=(0, 6))
+
+        # Fila 1: progreso + tiempo
+        row1 = tk.Frame(stats_frame, bg="#1B3055")
+        row1.pack(fill="x")
+        self.lbl_progreso   = tk.Label(row1, text="—", font=("Consolas", 10, "bold"),
+                                        fg="#F6EFE2", bg="#1B3055")
+        self.lbl_progreso.pack(side="left")
+        self.lbl_velocidad  = tk.Label(row1, text="", font=("Consolas", 10),
+                                        fg="#B08D57", bg="#1B3055")
+        self.lbl_velocidad.pack(side="left", padx=(16, 0))
+        self.lbl_tiempo     = tk.Label(row1, text="", font=("Consolas", 10),
+                                        fg="#B08D57", bg="#1B3055")
+        self.lbl_tiempo.pack(side="right")
+        self.lbl_eta        = tk.Label(row1, text="", font=("Consolas", 10),
+                                        fg="#B08D57", bg="#1B3055")
+        self.lbl_eta.pack(side="right", padx=(0, 16))
+
+        # Fila 2: contadores por estado
+        row2 = tk.Frame(stats_frame, bg="#1B3055")
+        row2.pack(fill="x", pady=(4, 0))
+        self.lbl_counts = {}
+        for status, color in [
+            ("Accepted", "#3B7A57"), ("Catch-All", "#1B7A8C"),
+            ("Rejected", "#C1272D"), ("No MX",     "#C1272D"),
+            ("SPAM Block","#8B3A8B"), ("Timeout",  "#B08D57"),
+            ("Greylisted","#B08D57"), ("MX Error", "#C1272D"),
+        ]:
+            lbl = tk.Label(row2, text=f"{status}: 0",
+                           font=("Consolas", 9), fg=color, bg="#1B3055", padx=6)
+            lbl.pack(side="left")
+            self.lbl_counts[status] = lbl
+
         self.status_label = tk.Label(self.main_frame, text="",
                                       font=("Consolas", 10), fg="#B08D57", bg="#12213B")
-        self.status_label.pack(anchor="w", pady=(0, 6))
+        self.status_label.pack(anchor="w", pady=(0, 4))
 
         # Tabla de resultados
         columns = ("email", "status", "detalle", "toxicidad")
@@ -589,7 +686,18 @@ class App(tk.Tk):
         self.verify_btn.config(state="disabled")
         self.export_btn.config(state="disabled")
         self.tree.delete(*self.tree.get_children())
-        self.results = []
+        self.results       = []
+        self._t_start      = None   # se setea cuando llega el primer resultado
+        self._live_counts  = {s: 0 for s in self.lbl_counts}
+        self._total_emails = 0
+
+        # Resetear panel de stats
+        self.lbl_progreso.config(text="Iniciando...")
+        self.lbl_velocidad.config(text="")
+        self.lbl_tiempo.config(text="")
+        self.lbl_eta.config(text="")
+        for s, lbl in self.lbl_counts.items():
+            lbl.config(text=f"{s}: 0")
 
         emails = extract_emails_from_file(self.selected_file)
         if not emails:
@@ -599,7 +707,9 @@ class App(tk.Tk):
             return
 
         try:
-            res = requests.get(f"{API_BASE}/api/user/{self.user_email}", timeout=15)
+            res = requests.get(f"{API_BASE}/api/user/me",
+                               headers={"Authorization": f"Bearer {self.auth_token}"},
+                               timeout=15)
             res.raise_for_status()
             credits = res.json()["credits"]
         except Exception as e:
@@ -613,6 +723,7 @@ class App(tk.Tk):
             self.verify_btn.config(state="normal")
             return
 
+        self._total_emails = len(emails)
         self.progress.config(maximum=len(emails), value=0)
         self.status_label.config(
             text=f"Verificando {len(emails)} emails por SMTP real...")
@@ -633,13 +744,46 @@ class App(tk.Tk):
         self.progress_queue.put(("done", None, None, None))
 
     def _poll_progress(self):
+        import time as _time
         try:
             while True:
                 kind, done, total, result = self.progress_queue.get_nowait()
                 if kind == "progress":
+                    # Iniciar timer en el primer resultado
+                    if self._t_start is None:
+                        self._t_start = _time.time()
+
                     self.progress.config(value=done)
-                    self.status_label.config(
-                        text=f"Verificando... {done}/{total}")
+
+                    # Tiempo transcurrido
+                    elapsed   = _time.time() - self._t_start
+                    vel       = done / elapsed if elapsed > 0 else 0
+                    restantes = total - done
+                    eta_seg   = restantes / vel if vel > 0 else 0
+
+                    def _fmt(s):
+                        s = int(s)
+                        m, sec = divmod(s, 60)
+                        return f"{m}m {sec:02d}s" if m else f"{sec}s"
+
+                    pct = (done / total) * 100
+                    self.lbl_progreso.config(
+                        text=f"{done}/{total}  ({pct:.1f}%)")
+                    self.lbl_velocidad.config(
+                        text=f"⚡ {vel:.1f} emails/s")
+                    self.lbl_tiempo.config(
+                        text=f"⏱ {_fmt(elapsed)}")
+                    self.lbl_eta.config(
+                        text=f"ETA {_fmt(eta_seg)}" if done < total else "ETA —")
+
+                    # Contador por estado
+                    st = result["status"]
+                    if st in self._live_counts:
+                        self._live_counts[st] += 1
+                        self.lbl_counts[st].config(
+                            text=f"{st}: {self._live_counts[st]}")
+
+                    # Insertar en tabla
                     tag = result["status"]
                     self.tree.insert("", "end",
                                       values=(result["email"], result["status"],
@@ -653,8 +797,19 @@ class App(tk.Tk):
         self.after(100, self._poll_progress)
 
     def _finish_verification(self):
+        import time as _time
+        elapsed = _time.time() - self._t_start if self._t_start else 0
+        m, s    = divmod(int(elapsed), 60)
+        tiempo  = f"{m}m {s:02d}s" if m else f"{s}s"
+        total   = len(self.results)
+        vel     = total / elapsed if elapsed > 0 else 0
+
+        self.lbl_progreso.config(text=f"{total}/{total}  (100%)")
+        self.lbl_velocidad.config(text=f"⚡ {vel:.1f} emails/s")
+        self.lbl_tiempo.config(text=f"⏱ {tiempo}")
+        self.lbl_eta.config(text="✅ Completado")
         self.status_label.config(
-            text=f"Listo. {len(self.results)} emails verificados. Reportando...")
+            text=f"Verificación completada — {total} emails en {tiempo}")
 
         status_counts = {}
         for r in self.results:
@@ -664,11 +819,11 @@ class App(tk.Tk):
             res = requests.post(
                 f"{API_BASE}/api/jobs/submit",
                 data={
-                    "email":              self.user_email,
                     "filename":           os.path.basename(self.selected_file),
                     "total_emails":       len(self.results),
                     "status_counts_json": json.dumps(status_counts),
                 },
+                headers={"Authorization": f"Bearer {self.auth_token}"},
                 timeout=30,
             )
             res.raise_for_status()
