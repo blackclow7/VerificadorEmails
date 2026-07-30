@@ -27,7 +27,22 @@ jobs:
       - name: Compilar el .exe
         working-directory: desktop
         run: |
-          pyinstaller --onefile --windowed --name VerificadorEmails verifier_app.py
+          pip install pyinstaller
+          pyinstaller --onefile --windowed --name VerificadorEmails `
+            --hidden-import=dns `
+            --hidden-import=dns.resolver `
+            --hidden-import=dns.rdatatype `
+            --hidden-import=dns.rdataclass `
+            --hidden-import=dns.name `
+            --hidden-import=dns.message `
+            --hidden-import=dns.query `
+            --hidden-import=dns.exception `
+            --hidden-import=dns.rdtypes `
+            --hidden-import=dns.rdtypes.ANY `
+            --hidden-import=dns.rdtypes.ANY.MX `
+            --hidden-import=dns.rdtypes.mxbase `
+            --collect-all=dns `
+            verifier_app.py
 
       - name: Subir el .exe como resultado descargable
         uses: actions/upload-artifact@v4
