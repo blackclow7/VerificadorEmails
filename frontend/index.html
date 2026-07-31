@@ -451,13 +451,14 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
     <!-- ── PÁGINA: EXPORTACIONES ───────────────────────────────────── -->
     <section class="page hidden" id="page-exportaciones">
       <h1>Exportaciones</h1>
-      <p class="subtitle">Descarga tus archivos ya exportados — guardados solo en este navegador</p>
+      <p class="subtitle">Descarga inmediata, sin almacenamiento posterior</p>
       <div class="card">
-        <table>
-          <thead><tr><th>Archivo</th><th>Fecha</th><th>Registros</th><th>Acciones</th></tr></thead>
-          <tbody id="exportsBody"></tbody>
-        </table>
-        <div id="exportsEmpty" class="empty-state hidden">Aún no has exportado ningún archivo.</div>
+        <div class="empty-state">
+          Por privacidad, la verificación web no guarda tus resultados en ningún lado —
+          ni en el servidor, ni en este navegador. Descarga el CSV desde la pantalla de
+          <b>Verificador</b> justo después de verificar tu lote; una vez que salgas de ahí,
+          el detalle ya no se puede recuperar.
+        </div>
       </div>
     </section>
 
@@ -593,7 +594,6 @@ function showApp(email, credits, plan){
   updatePlanBadge(plan);
   goToPage('verificador');
   loadListas();
-  renderExports();
   loadCreditos();
   loadAjustes();
 }
@@ -849,11 +849,9 @@ $('verifyBtn').onclick = async () => {
     lastResults  = data.resultados;
     lastFilename = selectedFile.name;
     $('creditsValue').textContent = data.credits_restantes;
-    await saveLocalJob(currentEmail, selectedFile.name, data.resultados);
     animateResults(data.resultados);
     renderResultsTable(data.resultados);
     loadListas();
-    renderExports();
   } catch(e){
     $('errorBoxVerify').innerHTML = `<div class="error-box">Error al verificar: ${e.message}</div>`;
   } finally {
@@ -945,50 +943,6 @@ $('downloadBtn').onclick = () => {
   a.href = url; a.download = `${lastFilename || 'resultados'}_verificado.csv`; a.click();
 };
 
-// ── Historial local (IndexedDB) ─────────────────────────────────────────
-const LOCAL_DB_NAME = 'ged_local_history';
-const LOCAL_DB_STORE = 'jobs';
-function openLocalDB(){
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(LOCAL_DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(LOCAL_DB_STORE)){
-        const store = db.createObjectStore(LOCAL_DB_STORE, { keyPath:'id', autoIncrement:true });
-        store.createIndex('email', 'email');
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror   = () => reject(req.error);
-  });
-}
-async function saveLocalJob(email, filename, results){
-  try {
-    const db = await openLocalDB();
-    db.transaction(LOCAL_DB_STORE,'readwrite').objectStore(LOCAL_DB_STORE)
-      .add({ email, filename, created_at: new Date().toISOString(), results });
-  } catch(e){ console.warn(e); }
-}
-async function getLocalJobs(email){
-  try {
-    const db = await openLocalDB();
-    return await new Promise((resolve, reject) => {
-      const idx = db.transaction(LOCAL_DB_STORE,'readonly').objectStore(LOCAL_DB_STORE).index('email');
-      const req = idx.getAll(email);
-      req.onsuccess = () => resolve(req.result.reverse());
-      req.onerror   = () => reject(req.error);
-    });
-  } catch(e){ return []; }
-}
-function downloadLocalJob(job){
-  let csv = 'email,status,detalle,toxicidad,señales_toxicidad\\n';
-  job.results.forEach(r => { csv += `"${r.email}","${r.status}","${r.detalle}",${r.toxicidad},"${r.señales_toxicidad}"\\n`; });
-  const blob = new Blob([csv], {type:'text/csv'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = `${job.filename || 'resultados'}_local.csv`; a.click();
-}
-
 // ── Página: Listas verificadas (servidor, agregado) ─────────────────────
 async function loadListas(){
   if (!currentToken) return;
@@ -1007,23 +961,6 @@ async function loadListas(){
         <td style="color:var(--ink-2);font-size:12.5px;">Solo conteo agregado</td>
       </tr>`).join('');
   } catch(e){ console.warn(e); }
-}
-
-// ── Página: Exportaciones (local, IndexedDB) ────────────────────────────
-async function renderExports(){
-  if (!currentEmail) return;
-  const jobs = await getLocalJobs(currentEmail);
-  if (!jobs.length){ $('exportsEmpty').classList.remove('hidden'); $('exportsBody').innerHTML=''; return; }
-  $('exportsEmpty').classList.add('hidden');
-  $('exportsBody').innerHTML = jobs.map(j => `
-    <tr>
-      <td>${j.filename}</td>
-      <td>${new Date(j.created_at).toLocaleString()}</td>
-      <td>${j.results.length.toLocaleString()}</td>
-      <td><button class="icon-btn" onclick='downloadLocalJob(${JSON.stringify(j).replace(/'/g,"&apos;")})'>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-      </button></td>
-    </tr>`).join('');
 }
 
 // ── Página: Créditos ─────────────────────────────────────────────────────
