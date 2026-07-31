@@ -276,12 +276,25 @@
     <input type="email" id="regEmailInput" placeholder="tu@empresa.com">
     <input type="password" id="regPassInput" placeholder="Contraseña (mínimo 8 caracteres)" style="width:100%;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:14px;border:1.5px solid var(--ink);border-radius:2px;background:#fff;margin-bottom:12px;">
     <input type="password" id="regPass2Input" placeholder="Repetir contraseña" style="width:100%;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:14px;border:1.5px solid var(--ink);border-radius:2px;background:#fff;margin-bottom:12px;">
+    <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:12px;font-size:13px;cursor:pointer;">
+      <input type="checkbox" id="termsCheckbox" style="margin-top:3px;">
+      <span>Acepto los <a href="#" id="showTermsLink" style="color:var(--ink);text-decoration:underline;">Términos y Condiciones</a> de uso del software</span>
+    </label>
     <div style="display:flex;gap:10px;align-items:center;">
-      <button id="registerBtn">Crear cuenta</button>
+      <button id="registerBtn" disabled>Crear cuenta</button>
       <button class="secondary" id="showLoginBtn">Ya tengo cuenta</button>
     </div>
     <p class="empty-note" style="margin-top:10px;">Recibirás un email de confirmación antes de poder iniciar sesión.</p>
   </section>
+
+  <!-- TÉRMINOS Y CONDICIONES (modal simple) -->
+  <div id="termsModal" class="hidden" style="position:fixed;inset:0;background:rgba(18,33,59,.7);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#F6EFE2;max-width:640px;width:100%;max-height:80vh;overflow:auto;padding:24px;border-radius:2px;">
+      <h2 style="margin-top:0;">Términos y Condiciones</h2>
+      <pre id="termsText" style="white-space:pre-wrap;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.5;"></pre>
+      <button id="closeTermsBtn" style="margin-top:12px;">Cerrar</button>
+    </div>
+  </div>
 
   <!-- UPLOAD -->
   <section class="panel hidden" id="uploadPanel">
@@ -294,9 +307,26 @@
     </div>
     <div style="margin-top:16px; display:flex; gap:10px; align-items:center;">
       <button id="verifyBtn" disabled>Verificar lote</button>
-      <button class="secondary" id="addCreditsBtn">+ 50 créditos (prueba)</button>
+      <button class="secondary" id="openBillingBtn">Ver planes / comprar créditos</button>
     </div>
     <div id="errorBox"></div>
+  </section>
+
+  <!-- BILLING (planes + créditos sueltos) -->
+  <section class="panel hidden" id="billingPanel">
+    <h2>Planes y créditos</h2>
+    <div style="display:flex; gap:10px; align-items:center; margin-bottom:16px;">
+      <button class="secondary" id="backFromBillingBtn">&larr; Volver</button>
+      <div style="margin-left:auto; display:flex; gap:6px;">
+        <button class="secondary" id="intervalMonthlyBtn">Mensual</button>
+        <button class="secondary" id="intervalAnnualBtn">Anual (15% desc.)</button>
+      </div>
+    </div>
+    <div id="plansGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:12px; margin-bottom:24px;"></div>
+    <h2 style="margin-top:8px;">Créditos sueltos (pago único)</h2>
+    <p class="empty-note" style="margin-bottom:12px;">Sin suscripción — para probar o para uso ocasional.</p>
+    <div id="packsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:12px;"></div>
+    <div id="billingMsg" style="margin-top:16px;"></div>
   </section>
 
   <!-- RESULTS -->
@@ -318,6 +348,13 @@
   <section class="panel hidden" id="historyPanel">
     <h2>Historial de lotes</h2>
     <div id="historyBody"><p class="empty-note">Aún no hay lotes procesados.</p></div>
+
+    <h2 style="margin-top:24px;">Guardado en este navegador</h2>
+    <p class="empty-note" style="margin-bottom:10px;">
+      El detalle completo de tus últimas verificaciones se guarda aquí, solo en este
+      navegador y este dispositivo — nunca en el servidor. Bórralo cuando quieras.
+    </p>
+    <div id="localHistoryBody"><p class="empty-note">Aún no hay nada guardado localmente.</p></div>
   </section>
 
   <footer>CORREO CERTIFICADO · Fase 1 — MVP</footer>
@@ -378,6 +415,7 @@ function showLogin(){
   $('registerPanel').classList.add('hidden');
   $('forgotPanel').classList.add('hidden');
   $('resetPanel').classList.add('hidden');
+  $('billingPanel').classList.add('hidden');
 }
 function showApp(email, credits){
   currentEmail = email;
@@ -388,7 +426,106 @@ function showApp(email, credits){
   $('uploadPanel').classList.remove('hidden');
   $('historyPanel').classList.remove('hidden');
   loadHistory();
+  renderLocalHistory();
 }
+
+// ── Planes y créditos (Stripe) ───────────────────────────────────────────────
+const PLANS = [
+  { key: 'esencial',   name: 'Esencial',   monthly: 12,  annual: 122.40,  credits: 1500  },
+  { key: 'starter',    name: 'Starter',    monthly: 19,  annual: 193.80,  credits: 2800  },
+  { key: 'pro',        name: 'Pro',        monthly: 30,  annual: 306.00,  credits: 5000  },
+  { key: 'growth',     name: 'Growth',     monthly: 69,  annual: 703.80,  credits: 12000 },
+  { key: 'business',   name: 'Business',   monthly: 119, annual: 1213.80, credits: 22000 },
+  { key: 'enterprise', name: 'Enterprise', monthly: 399, annual: 4069.80, credits: 75000 },
+];
+const PACKS = [
+  { key: 'chico',   name: 'Chico',   price: 3,  credits: 100  },
+  { key: 'mediano', name: 'Mediano', price: 12, credits: 500  },
+  { key: 'grande',  name: 'Grande',  price: 40, credits: 2000 },
+];
+let billingInterval = 'monthly';
+
+function renderBilling(){
+  $('intervalMonthlyBtn').style.opacity = billingInterval === 'monthly' ? 1 : .55;
+  $('intervalAnnualBtn').style.opacity  = billingInterval === 'annual'  ? 1 : .55;
+
+  $('plansGrid').innerHTML = PLANS.map(p => {
+    const price = billingInterval === 'monthly' ? p.monthly : p.annual;
+    const suffix = billingInterval === 'monthly' ? '/mes' : '/año';
+    return `<div style="border:1.5px solid var(--ink); padding:14px; border-radius:2px;">
+      <div style="font-weight:700; margin-bottom:4px;">${p.name}</div>
+      <div style="font-size:20px; font-family:'IBM Plex Mono',monospace;">$${price.toFixed(2)}<span style="font-size:12px;">${suffix}</span></div>
+      <div class="empty-note" style="margin:6px 0;">${p.credits.toLocaleString()} créditos/mes</div>
+      <button data-plan="${p.key}" class="billing-plan-btn" style="width:100%;">Suscribirme</button>
+    </div>`;
+  }).join('');
+
+  $('packsGrid').innerHTML = PACKS.map(k => `
+    <div style="border:1.5px solid var(--ink); padding:14px; border-radius:2px;">
+      <div style="font-weight:700; margin-bottom:4px;">${k.name}</div>
+      <div style="font-size:20px; font-family:'IBM Plex Mono',monospace;">$${k.price.toFixed(2)}</div>
+      <div class="empty-note" style="margin:6px 0;">${k.credits.toLocaleString()} créditos, pago único</div>
+      <button data-pack="${k.key}" class="billing-pack-btn secondary" style="width:100%;">Comprar</button>
+    </div>`
+  ).join('');
+
+  document.querySelectorAll('.billing-plan-btn').forEach(btn => {
+    btn.onclick = () => startCheckout({ plan: btn.dataset.plan, interval: billingInterval });
+  });
+  document.querySelectorAll('.billing-pack-btn').forEach(btn => {
+    btn.onclick = () => startCheckout({ pack: btn.dataset.pack });
+  });
+}
+
+async function startCheckout(params){
+  $('billingMsg').innerHTML = '';
+  const form = new URLSearchParams();
+  if (params.plan) { form.append('plan', params.plan); form.append('interval', params.interval); }
+  if (params.pack)  { form.append('pack', params.pack); }
+  try {
+    const res = await fetch(`${API_BASE}/api/billing/checkout`, {
+      method: 'POST', headers: authHeaders(), body: form
+    });
+    if (!res.ok){ const t = await res.text(); throw new Error(t); }
+    const data = await res.json();
+    window.location.href = data.checkout_url; // Stripe Checkout
+  } catch(e){
+    $('billingMsg').innerHTML = `<div class="error-box">No se pudo iniciar la compra: ${e.message}. `
+      + `Es posible que Stripe aún no esté completamente configurado en el servidor.</div>`;
+  }
+}
+
+$('openBillingBtn').onclick = () => {
+  $('uploadPanel').classList.add('hidden');
+  $('historyPanel').classList.add('hidden');
+  $('billingPanel').classList.remove('hidden');
+  renderBilling();
+};
+$('backFromBillingBtn').onclick = () => {
+  $('billingPanel').classList.add('hidden');
+  $('uploadPanel').classList.remove('hidden');
+  $('historyPanel').classList.remove('hidden');
+};
+$('intervalMonthlyBtn').onclick = () => { billingInterval = 'monthly'; renderBilling(); };
+$('intervalAnnualBtn').onclick  = () => { billingInterval = 'annual';  renderBilling(); };
+
+// Si venimos de un redirect de Stripe (?checkout=success|cancel), avisar y refrescar créditos
+(function checkStripeRedirect(){
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get('checkout');
+  if (status === 'success' || status === 'cancel'){
+    const note = document.createElement('div');
+    note.className = status === 'success' ? 'error-box' : 'empty-note';
+    note.style.cssText = status === 'success'
+      ? 'background:#eaf3ea;border-color:#3B7A57;color:#2c5c40;'
+      : '';
+    note.textContent = status === 'success'
+      ? 'Pago recibido. Tus créditos se reflejarán en unos segundos (puede requerir recargar la página).'
+      : 'Compra cancelada, no se realizó ningún cargo.';
+    document.querySelector('.wrap').prepend(note);
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+})();
 
 // ── Login ───────────────────────────────────────────────────────────────────
 $('loginBtn').onclick = async () => {
@@ -430,10 +567,99 @@ $('showLoginBtn').onclick = () => {
   $('loginPanel').classList.remove('hidden');
 };
 
+// ── Términos y Condiciones ───────────────────────────────────────────────────
+const TERMS_TEXT = `TÉRMINOS Y CONDICIONES DE USO — CORREO CERTIFICADO
+(Borrador — pendiente de revisión legal)
+
+1. OBJETO DEL SERVICIO
+Correo Certificado ("el Software") es una herramienta técnica que permite validar
+si una dirección de correo electrónico tiene un formato correcto, si su dominio
+existe, si cuenta con registros MX, y opcionalmente si el servidor de destino
+confirma la existencia del buzón (verificación SMTP). El Software NO envía
+correos electrónicos ni realiza campañas de comunicación de ningún tipo.
+
+2. USO PERMITIDO
+El usuario se compromete a utilizar el Software únicamente para verificar
+direcciones de correo sobre las cuales tiene una base legítima de tratamiento
+(por ejemplo: listas propias de clientes, registros con consentimiento, o
+contactos obtenidos de forma lícita). Queda expresamente prohibido usar el
+Software para:
+  a) Validar listas de correos obtenidas de forma ilícita, robada o comprada
+     sin consentimiento de los titulares.
+  b) Facilitar el envío de correo no solicitado (spam) o campañas que violen
+     leyes de protección de datos o anti-spam aplicables (incluyendo, sin
+     limitarse a, la Ley Federal de Protección de Datos Personales en Posesión
+     de los Particulares en México, el CAN-SPAM Act en EE.UU., o el RGPD en
+     la Unión Europea, según corresponda al usuario).
+  c) Cualquier actividad que infrinja derechos de terceros o la legislación
+     vigente en la jurisdicción del usuario.
+
+3. RESPONSABILIDAD DEL USUARIO
+El usuario es el único responsable de:
+  a) El origen, legalidad y consentimiento asociado a las direcciones de
+     correo que decida verificar.
+  b) El uso que dé a los resultados obtenidos del Software.
+  c) Cumplir con toda ley, reglamento o normativa aplicable a su actividad,
+     incluyendo las relativas a protección de datos personales y comunicaciones
+     electrónicas.
+Correo Certificado actúa únicamente como proveedor de una herramienta técnica
+de validación y no participa, controla ni supervisa el uso que el usuario haga
+de las direcciones verificadas ni de los resultados obtenidos.
+
+4. PRECISIÓN DE LOS RESULTADOS
+Los resultados del Software (incluyendo estados como "MX válido", "Accepted",
+"Catch-All", etc.) son de carácter informativo y no constituyen una garantía
+absoluta de entregabilidad real del correo. Factores fuera del control de
+Correo Certificado pueden afectar la precisión del resultado en un envío real
+posterior.
+
+5. LIMITACIÓN DE RESPONSABILIDAD
+En la máxima medida permitida por la ley aplicable, Correo Certificado no será
+responsable por daños directos, indirectos, incidentales o consecuentes
+derivados de: (a) el uso indebido del Software por parte del usuario, (b)
+decisiones tomadas con base en los resultados de verificación, o (c) el
+incumplimiento por parte del usuario de leyes de protección de datos o
+anti-spam aplicables a su actividad.
+
+6. PRIVACIDAD Y MANEJO DE DATOS
+Los correos individuales y sus resultados detallados de esta verificación web
+NO se almacenan en los servidores de Correo Certificado — solo se guarda un
+conteo agregado por estado, necesario para el historial y para descontar
+créditos. Ver la Política de Privacidad completa para más detalle.
+
+7. CRÉDITOS Y PAGOS
+El acceso a la verificación se rige por un sistema de créditos, adquiribles
+mediante planes de suscripción o paquetes de pago único. Los cargos se
+procesan a través de Stripe, Inc.
+
+8. MODIFICACIONES
+Correo Certificado podrá actualizar estos Términos y Condiciones en cualquier
+momento. El uso continuado del Software tras una actualización constituye la
+aceptación de los nuevos términos.
+
+9. LEGISLACIÓN APLICABLE
+[Pendiente de definir con asesoría legal: país/jurisdicción y mecanismo de
+resolución de controversias aplicable.]
+
+Al marcar la casilla "Acepto los Términos y Condiciones", el usuario declara
+haber leído, entendido y aceptado íntegramente este documento.`;
+
+$('showTermsLink').onclick = (e) => {
+  e.preventDefault();
+  $('termsText').textContent = TERMS_TEXT;
+  $('termsModal').classList.remove('hidden');
+};
+$('closeTermsBtn').onclick = () => $('termsModal').classList.add('hidden');
+
+$('termsCheckbox').onchange = () => {
+  $('registerBtn').disabled = !$('termsCheckbox').checked;
+};
+
 $('registerBtn').onclick = async () => {
   const email   = $('regEmailInput').value.trim().toLowerCase();
   const pass1   = $('regPassInput').value;
   const pass2   = $('regPass2Input').value;
+  if (!$('termsCheckbox').checked){ showError('Debes aceptar los Términos y Condiciones'); return; }
   if (!email || !email.includes('@')){ showError('Email inválido'); return; }
   if (pass1.length < 8){ showError('La contraseña debe tener al menos 8 caracteres'); return; }
   if (pass1 !== pass2){ showError('Las contraseñas no coinciden'); return; }
@@ -457,7 +683,7 @@ $('registerBtn').onclick = async () => {
   } catch(e){
     showError(e.message);
   } finally {
-    $('registerBtn').disabled = false;
+    $('registerBtn').disabled = !$('termsCheckbox').checked ? true : false;
     $('registerBtn').textContent = 'Crear cuenta';
   }
 };
@@ -612,7 +838,9 @@ $('verifyBtn').onclick = async () => {
     lastFilename = selectedFile.name;
     renderResults(data);
     $('creditsBadge').innerHTML = `Créditos disponibles<b>${data.credits_restantes}</b>`;
+    await saveLocalJob(currentEmail, selectedFile.name, data.resultados);
     loadHistory();
+    renderLocalHistory();
   } catch(e){
     showError('Error al verificar: ' + e.message);
   } finally {
@@ -649,6 +877,86 @@ $('downloadBtn').onclick = () => {
   const a    = document.createElement('a');
   a.href = url; a.download = `${lastFilename || 'resultados'}_verificado.csv`; a.click();
 };
+
+// ── Historial local (IndexedDB) — detalle completo, nunca sale del navegador ─
+const LOCAL_DB_NAME  = 'vmail_local_history';
+const LOCAL_DB_STORE = 'jobs';
+
+function openLocalDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(LOCAL_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(LOCAL_DB_STORE)){
+        const store = db.createObjectStore(LOCAL_DB_STORE, { keyPath: 'id', autoIncrement: true });
+        store.createIndex('email', 'email');
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+async function saveLocalJob(email, filename, results){
+  try {
+    const db = await openLocalDB();
+    db.transaction(LOCAL_DB_STORE, 'readwrite')
+      .objectStore(LOCAL_DB_STORE)
+      .add({ email, filename, created_at: new Date().toISOString(), results });
+  } catch(e){ console.warn('No se pudo guardar historial local:', e); }
+}
+
+async function getLocalJobs(email){
+  try {
+    const db = await openLocalDB();
+    return await new Promise((resolve, reject) => {
+      const idx = db.transaction(LOCAL_DB_STORE, 'readonly')
+                     .objectStore(LOCAL_DB_STORE).index('email');
+      const req = idx.getAll(email);
+      req.onsuccess = () => resolve(req.result.reverse());
+      req.onerror   = () => reject(req.error);
+    });
+  } catch(e){ return []; }
+}
+
+async function deleteLocalJob(id){
+  try {
+    const db = await openLocalDB();
+    db.transaction(LOCAL_DB_STORE, 'readwrite').objectStore(LOCAL_DB_STORE).delete(id);
+  } catch(e){}
+  renderLocalHistory();
+}
+
+function downloadLocalJob(job){
+  let csv = 'email,status,detalle,toxicidad,señales_toxicidad\n';
+  job.results.forEach(r => {
+    csv += `"${r.email}","${r.status}","${r.detalle}",${r.toxicidad},"${r.señales_toxicidad}"\n`;
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `${job.filename || 'resultados'}_local.csv`; a.click();
+}
+
+async function renderLocalHistory(){
+  if (!currentEmail) return;
+  const jobs      = await getLocalJobs(currentEmail);
+  const container = $('localHistoryBody');
+  if (!jobs.length){
+    container.innerHTML = '<p class="empty-note">Aún no hay nada guardado localmente.</p>';
+    return;
+  }
+  container.innerHTML = jobs.map(j => `
+    <div class="job-row">
+      <span>${j.filename} · ${j.results.length} emails · ${new Date(j.created_at).toLocaleString()}</span>
+      <span>
+        <a href="#" onclick="downloadLocalJob(${JSON.stringify(j).replace(/"/g, '&quot;')}); return false;">Descargar</a>
+        &nbsp;·&nbsp;
+        <a href="#" style="color:#C1272D;" onclick="deleteLocalJob(${j.id}); return false;">Borrar</a>
+      </span>
+    </div>`
+  ).join('');
+}
 
 async function loadHistory(){
   if (!currentToken) return;
