@@ -1,18 +1,18 @@
 [Setup]
-AppName=Correo Certificado
+AppName=Green Email Verifier
 AppVersion=1.0
-AppPublisher=Correo Certificado
+AppPublisher=Green Email Verifier
 AppPublisherURL=https://verificador-emails.vercel.app
 AppSupportURL=https://verificador-emails.vercel.app
 AppUpdatesURL=https://verificador-emails.vercel.app
-DefaultDirName={autopf}\CorreoCertificado
-DefaultGroupName=Correo Certificado
+DefaultDirName={autopf}\GreenEmailVerifier
+DefaultGroupName=Green Email Verifier
 OutputDir=Output
 OutputBaseFilename=VerificadorEmails_Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=
+SetupIconFile=icon.ico
 UninstallDisplayIcon={app}\VerificadorEmails.exe
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
@@ -29,13 +29,13 @@ Name: "quicklaunchicon"; Description: "Crear acceso directo en el menú inicio";
 Source: "dist\VerificadorEmails.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Correo Certificado"; Filename: "{app}\VerificadorEmails.exe"
-Name: "{group}\Desinstalar Correo Certificado"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\Correo Certificado"; Filename: "{app}\VerificadorEmails.exe"; Tasks: desktopicon
-Name: "{commonstartmenu}\Correo Certificado"; Filename: "{app}\VerificadorEmails.exe"; Tasks: quicklaunchicon
+Name: "{group}\Green Email Verifier"; Filename: "{app}\VerificadorEmails.exe"
+Name: "{group}\Desinstalar Green Email Verifier"; Filename: "{uninstallexe}"
+Name: "{commondesktop}\Green Email Verifier"; Filename: "{app}\VerificadorEmails.exe"; Tasks: desktopicon
+Name: "{commonstartmenu}\Green Email Verifier"; Filename: "{app}\VerificadorEmails.exe"; Tasks: quicklaunchicon
 
 [Run]
-Filename: "{app}\VerificadorEmails.exe"; Description: "Ejecutar Correo Certificado ahora"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\VerificadorEmails.exe"; Description: "Ejecutar Green Email Verifier ahora"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
