@@ -498,4 +498,8 @@ if __name__ == "__main__":
         min_size=(1024, 700),
     )
     api.window = window
-    webview.start()
+    # Se fuerza explícitamente el motor EdgeChromium (WebView2). Sin esto,
+    # dentro de un .exe empaquetado a veces pywebview cae en silencio a un
+    # motor viejo (Trident/IE) que no soporta bien el puente js_api, y los
+    # métodos de Python (como check_port25) nunca aparecen del lado del HTML.
+    webview.start(gui="edgechromium")
