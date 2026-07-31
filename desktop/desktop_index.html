@@ -189,6 +189,8 @@ tr:last-child td{ border-bottom:none; }
 .stat-card{ border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; }
 .stat-card .n{ font-size:19px; font-weight:800; }
 .stat-card .l{ font-size:12px; color:var(--ink-2); margin-top:2px; }
+.mini-progress{ height:5px; background:var(--border); border-radius:3px; overflow:hidden; margin-top:9px; }
+.mini-progress-fill{ height:100%; width:0%; background:var(--green); border-radius:3px; }
 
 /* ── Créditos page ─────────────────────────────────────────────── */
 .plan-badge-icon{
@@ -264,8 +266,9 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
           <div style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;">
             <span id="port25Icon">⏳</span> Verificación de conexión (requerido)
           </div>
-          <div id="port25Text" style="font-size:12.5px;color:var(--ink-2);margin-top:6px;">Probando puerto 25 (SMTP)…</div>
-          <button class="btn-outline" id="port25RetryBtn" style="margin-top:10px;font-size:12px;padding:6px 12px;">Reprobar</button>
+          <div id="port25Text" style="font-size:12.5px;color:var(--ink-2);margin-top:6px;">Validando puerto 25…</div>
+          <div class="mini-progress"><div class="mini-progress-fill" id="port25ProgressFill"></div></div>
+          <button class="btn-outline" id="port25RetryBtn" style="margin-top:10px;font-size:12px;padding:6px 12px;">Volver a validar</button>
         </div>
 
         <input type="email" id="emailInput" placeholder="tu@empresa.com">
@@ -399,12 +402,15 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
       <h1>Verificador de correos</h1>
       <p class="subtitle">Verifica la validez de una lista de correos electrónicos</p>
 
-      <div class="card" style="margin-bottom:16px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:8px;font-size:13.5px;">
-          <span id="vPort25Icon">⏳</span>
-          <span id="vPort25Text">Probando puerto 25…</span>
+      <div class="card" style="margin-bottom:16px;padding:14px 16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13.5px;">
+            <span id="vPort25Icon">⏳</span>
+            <span id="vPort25Text">Validando puerto 25…</span>
+          </div>
+          <button class="btn-outline" id="vPort25RetryBtn">Volver a validar</button>
         </div>
-        <button class="btn-outline" id="vPort25RetryBtn">Probar puerto 25</button>
+        <div class="mini-progress"><div class="mini-progress-fill" id="vPort25ProgressFill"></div></div>
       </div>
 
       <div class="card">
@@ -428,6 +434,10 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
           <button class="btn" id="verifyBtn" style="margin-bottom:20px;">Verificar lote</button>
 
           <div class="hidden" id="vProgressWrap">
+            <div class="row-flex" style="margin-bottom:6px;">
+              <span id="vTimingElapsed" style="font-size:13px;color:var(--ink-2);">Tiempo transcurrido: 0s</span>
+              <span id="vTimingEta" style="font-size:13px;color:var(--ink-2);">Tiempo estimado restante: —</span>
+            </div>
             <div class="donut-wrap">
               <div class="donut-center">
                 <svg width="200" height="200" viewBox="0 0 200 200" id="donutSvg"></svg>
@@ -436,11 +446,16 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
                   <div class="t" id="donutCenterT">correos revisados</div>
                 </div>
               </div>
-              <div class="legend" id="legendBox"></div>
+              <div class="legend" id="legendBox">
+                <table>
+                  <thead><tr><th>Estatus</th><th style="text-align:right;">Revisiones</th><th style="text-align:right;">Porcentaje</th></tr></thead>
+                  <tbody id="legendBody"></tbody>
+                </table>
+              </div>
             </div>
             <div class="stat-cards" id="statCards"></div>
             <div class="row-flex" style="margin-top:20px;">
-              <button class="btn-outline" id="viewDetailBtn">Ver detalle completo</button>
+              <button class="btn-outline" id="viewDetailBtn">Ocultar detalle</button>
               <button class="btn" id="downloadBtn">Exportar CSV</button>
             </div>
           </div>
@@ -448,7 +463,7 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
         <div id="errorBoxVerify"></div>
       </div>
 
-      <div class="card hidden" id="detailCard" style="margin-top:20px;max-height:420px;overflow:auto;">
+      <div class="card" id="detailCard" style="margin-top:20px;max-height:420px;overflow:auto;">
         <table>
           <thead><tr><th>Email</th><th>Estado</th><th>Detalle</th><th>Toxicidad</th></tr></thead>
           <tbody id="resultsBody"></tbody>
@@ -611,40 +626,80 @@ function clearError(){ $('errorBox').innerHTML = ''; }
 // El resultado de check_port25 llega aquí de forma asíncrona (Python corre
 // la prueba en un hilo aparte para no congelar la ventana). 'context' dice
 // si el aviso es para el login o para la pantalla de Verificador.
+
+// Tiempo máximo que puede tardar la validación (coincide con el timeout de
+// red en Python) — se usa solo para animar la barra de progreso.
+const PORT25_MAX_SECONDS = 6;
+let _port25Timers = { login: null, verificador: null };
+
+function startPort25Progress(context){
+  const fillId = context === 'login' ? 'port25ProgressFill' : 'vPort25ProgressFill';
+  const textId = context === 'login' ? 'port25Text' : 'vPort25Text';
+  const fill = $(fillId);
+  fill.style.transition = 'none';
+  fill.style.width = '0%';
+  // forzar reflow para que la siguiente transición sí se anime desde 0
+  void fill.offsetWidth;
+  fill.style.transition = `width ${PORT25_MAX_SECONDS}s linear`;
+  fill.style.width = '100%';
+
+  let seconds = 0;
+  $(textId).textContent = `Validando puerto 25… (${seconds}s)`;
+  const intervalId = setInterval(() => {
+    seconds++;
+    $(textId).textContent = `Validando puerto 25… (${seconds}s)`;
+  }, 1000);
+
+  if (_port25Timers[context]) clearInterval(_port25Timers[context]);
+  _port25Timers[context] = intervalId;
+}
+
+function stopPort25Progress(context, open){
+  if (_port25Timers[context]){ clearInterval(_port25Timers[context]); _port25Timers[context] = null; }
+  const fillId = context === 'login' ? 'port25ProgressFill' : 'vPort25ProgressFill';
+  const fill = $(fillId);
+  fill.style.transition = 'width .2s ease';
+  fill.style.width = '100%';
+  fill.style.background = open ? 'var(--green)' : 'var(--red)';
+}
+
 window.onPort25Result = function(res){
   if (res.context === 'login'){
+    stopPort25Progress('login', res.open);
     port25Open = res.open;
     if (res.open){
       $('port25Icon').textContent = '✅';
-      $('port25Text').innerHTML = `<b style="color:var(--green);">Conexión exitosa</b><br>El puerto 25 está abierto y respondiendo correctamente (${res.info}).`;
+      $('port25Text').innerHTML = `<b style="color:var(--green);">Puerto disponible</b><br><span style="font-size:11px;color:var(--ink-2);">Respondió ${res.info}</span>`;
     } else {
       $('port25Icon').textContent = '❌';
-      $('port25Text').innerHTML = `<b style="color:var(--red);">Puerto 25 bloqueado</b><br>${res.info}. No podrás verificar por SMTP real en esta red.`;
+      $('port25Text').innerHTML = `<b style="color:var(--red);">Puerto no disponible</b><br><span style="font-size:11px;color:var(--ink-2);">${res.info}. No podrás verificar por SMTP real en esta red.</span>`;
     }
     updateLoginBtnState();
   } else if (res.context === 'verificador'){
+    stopPort25Progress('verificador', res.open);
     verifierPort25Open = res.open;
     if (res.open){
       $('vPort25Icon').textContent = '✅';
-      $('vPort25Text').textContent = `Puerto 25 abierto (respondió ${res.info})`;
+      $('vPort25Text').innerHTML = `<b style="color:var(--green);">Puerto disponible</b>`;
     } else {
       $('vPort25Icon').textContent = '❌';
-      $('vPort25Text').textContent = `Puerto 25 bloqueado — ${res.info}`;
+      $('vPort25Text').innerHTML = `<b style="color:var(--red);">Puerto no disponible</b>`;
     }
   }
 };
 
 async function checkPort25(){
   $('port25Icon').textContent = '⏳';
-  $('port25Text').textContent = 'Probando puerto 25 (SMTP)…';
   port25Open = null;
   updateLoginBtnState();
+  startPort25Progress('login');
   try {
     await pyApi().check_port25('login');
   } catch(e){
+    stopPort25Progress('login', false);
     port25Open = false;
     $('port25Icon').textContent = '❌';
-    $('port25Text').textContent = 'No se pudo probar el puerto 25: ' + e.message;
+    $('port25Text').innerHTML = `<b style="color:var(--red);">Puerto no disponible</b><br><span style="font-size:11px;color:var(--ink-2);">${e.message}</span>`;
     updateLoginBtnState();
   }
 }
@@ -736,7 +791,19 @@ $('loginBtn').onclick = async () => {
   if (!password){ showError('Ingresa tu contraseña'); return; }
   clearError();
   $('loginBtn').disabled = true;
+
+  let secs = 0;
   $('loginBtn').textContent = 'Conectando…';
+  const loginTimer = setInterval(() => {
+    secs++;
+    $('loginBtn').textContent = `Conectando… (${secs}s)`;
+    if (secs === 5){
+      $('errorBox').innerHTML = `<div class="error-box" style="background:var(--green-light);color:var(--green-dark);">
+        El servidor puede tardar hasta 30-40 segundos en responder si estaba inactivo. Por favor espera…
+      </div>`;
+    }
+  }, 1000);
+
   try {
     const body = new URLSearchParams();
     body.append('email', email); body.append('password', password);
@@ -751,6 +818,7 @@ $('loginBtn').onclick = async () => {
   } catch(e){
     showError(e.message);
   } finally {
+    clearInterval(loginTimer);
     updateLoginBtnState();
     $('loginBtn').textContent = 'Iniciar sesión';
   }
@@ -931,17 +999,39 @@ const STATUS_LABELS_ORDER = ['Accepted','Catch-All','Rejected','No MX','SPAM Blo
 let verifyTotal = 0;
 const liveCounts = {};
 let verifierPort25Open = null; // null = sin probar, true/false = resultado
+let verifyStartTime = null;
+let verifyTimingInterval = null;
+
+function fmtSeconds(s){
+  s = Math.max(0, Math.round(s));
+  const m = Math.floor(s / 60), sec = s % 60;
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+
+function updateVerifyTiming(done, total){
+  if (!verifyStartTime) return;
+  const elapsed = (Date.now() - verifyStartTime) / 1000;
+  $('vTimingElapsed').textContent = `Tiempo transcurrido: ${fmtSeconds(elapsed)}`;
+  if (done > 0 && done < total){
+    const rate = done / elapsed;
+    const remaining = rate > 0 ? (total - done) / rate : 0;
+    $('vTimingEta').textContent = `Tiempo estimado restante: ${fmtSeconds(remaining)}`;
+  } else if (done >= total){
+    $('vTimingEta').textContent = 'Tiempo estimado restante: completado';
+  }
+}
 
 async function checkPort25ForVerifier(){
   $('vPort25Icon').textContent = '⏳';
-  $('vPort25Text').textContent = 'Probando puerto 25…';
   verifierPort25Open = null;
+  startPort25Progress('verificador');
   try {
     await pyApi().check_port25('verificador');
   } catch(e){
+    stopPort25Progress('verificador', false);
     verifierPort25Open = false;
     $('vPort25Icon').textContent = '❌';
-    $('vPort25Text').textContent = 'No se pudo probar: ' + e.message;
+    $('vPort25Text').innerHTML = `<b style="color:var(--red);">Puerto no disponible</b><br><span style="font-size:11px;color:var(--ink-2);">${e.message}</span>`;
   }
 }
 $('vPort25RetryBtn').onclick = checkPort25ForVerifier;
@@ -952,12 +1042,30 @@ window.onVerifyProgress = function(payload){
   verifyTotal = total;
   liveCounts[result.status] = (liveCounts[result.status] || 0) + 1;
   drawDonut(liveCounts, done, total);
+  updateVerifyTiming(done, total);
+  appendResultRow(result); // listado individual en tiempo real
 };
+
+function appendResultRow(r){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${r.email}</td>
+    <td><span class="badge-ok" style="background:${STATUS_COLORS[r.status]}22;color:${STATUS_COLORS[r.status]};">${r.status}</span></td>
+    <td>${r.detalle}</td>
+    <td>${r.toxicidad}/5</td>`;
+  $('resultsBody').appendChild(tr);
+  // Mantiene la vista siguiendo el último resultado agregado
+  const wrap = $('detailCard');
+  wrap.scrollTop = wrap.scrollHeight;
+}
 
 // Python llama esta función cuando el lote completo terminó
 window.onVerifyComplete = async function(results){
   lastResults  = results;
   lastFilename = selectedFilePath.split(/[\\/]/).pop();
+
+  if (verifyTimingInterval){ clearInterval(verifyTimingInterval); verifyTimingInterval = null; }
+  updateVerifyTiming(results.length, results.length);
 
   const status_counts = {};
   results.forEach(r => { status_counts[r.status] = (status_counts[r.status]||0)+1; });
@@ -979,7 +1087,6 @@ window.onVerifyComplete = async function(results){
     await saveLocalJob(currentEmail, lastFilename, results);
     drawDonut(status_counts, results.length, results.length);
     drawStatCards(status_counts, results.length);
-    renderResultsTable(results);
     loadListas();
     renderExports();
   } catch(e){
@@ -1011,13 +1118,25 @@ $('verifyBtn').onclick = async () => {
   $('verifyBtn').disabled = true;
   $('verifyBtn').textContent = 'Verificando (SMTP real)…';
   $('vProgressWrap').classList.remove('hidden');
+  $('detailCard').classList.remove('hidden');
+  $('viewDetailBtn').textContent = 'Ocultar detalle';
+  $('resultsBody').innerHTML = '';
   Object.keys(liveCounts).forEach(k => delete liveCounts[k]);
   drawDonut({}, 0, 1);
+
+  verifyStartTime = Date.now();
+  $('vTimingElapsed').textContent = 'Tiempo transcurrido: 0s';
+  $('vTimingEta').textContent = 'Tiempo estimado restante: calculando…';
+  if (verifyTimingInterval) clearInterval(verifyTimingInterval);
+  verifyTimingInterval = setInterval(() => updateVerifyTiming(
+    Object.values(liveCounts).reduce((a,b) => a+b, 0), verifyTotal || 1
+  ), 1000);
 
   try {
     await pyApi().verify_batch(selectedFilePath);
     // El resultado llega después, de forma asíncrona, vía window.onVerifyComplete
   } catch(e){
+    if (verifyTimingInterval){ clearInterval(verifyTimingInterval); verifyTimingInterval = null; }
     $('errorBoxVerify').innerHTML = `<div class="error-box">Error al verificar: ${e.message}</div>`;
     $('verifyBtn').disabled = false;
     $('verifyBtn').textContent = 'Verificar (SMTP real)';
@@ -1046,10 +1165,14 @@ function drawDonut(counts, shown, total){
   $('donutCenterN').textContent = shown.toLocaleString();
   $('donutCenterT').textContent = shown < total ? `de ${total.toLocaleString()} correos` : 'correos revisados';
 
-  $('legendBox').innerHTML = STATUS_LABELS_ORDER.map(s => {
+  $('legendBody').innerHTML = STATUS_LABELS_ORDER.map(s => {
     const n = counts[s] || 0;
     const pct = shown ? ((n/shown)*100).toFixed(1) : '0.0';
-    return `<div class="legend-row"><span><span class="dot" style="background:${STATUS_COLORS[s]}"></span>${s}</span><span>${n.toLocaleString()} · ${pct}%</span></div>`;
+    return `<tr>
+      <td><span class="dot" style="background:${STATUS_COLORS[s]}"></span>${s}</td>
+      <td style="text-align:right;">${n.toLocaleString()}</td>
+      <td style="text-align:right;">${pct}%</td>
+    </tr>`;
   }).join('');
 }
 
@@ -1070,7 +1193,10 @@ function renderResultsTable(results){
       <td>${r.toxicidad}/5</td>
     </tr>`).join('');
 }
-$('viewDetailBtn').onclick = () => { $('detailCard').classList.toggle('hidden'); };
+$('viewDetailBtn').onclick = () => {
+  const hidden = $('detailCard').classList.toggle('hidden');
+  $('viewDetailBtn').textContent = hidden ? 'Mostrar detalle' : 'Ocultar detalle';
+};
 $('downloadBtn').onclick = async () => {
   if (!lastResults) return;
   let csv = 'email,status,detalle,toxicidad,señales_toxicidad\n';
@@ -1090,6 +1216,28 @@ async function saveLocalJob(email, filename, results){
 }
 
 // ── Página: Listas verificadas (servidor, agregado) ─────────────────────
+function baseNameNoExt(filename){
+  const idx = filename.lastIndexOf('.');
+  return idx > 0 ? filename.slice(0, idx) : filename;
+}
+
+// Los archivos locales se guardan como "AAAAMMDD_HHMMSS_<nombreOriginal>.csv".
+// Aquí buscamos, para un lote del historial del servidor, el archivo local
+// correspondiente (mismo nombre base + fecha cercana).
+function findLocalFileForJob(job, localFiles){
+  const base = baseNameNoExt(job.filename);
+  const jobTime = new Date(job.created_at).getTime() / 1000;
+  let best = null, bestDiff = Infinity;
+  for (const f of localFiles){
+    const localBase = baseNameNoExt(f.name).replace(/^\d{8}_\d{6}_/, '');
+    if (localBase === base){
+      const diff = Math.abs(f.mtime - jobTime);
+      if (diff < bestDiff){ bestDiff = diff; best = f; }
+    }
+  }
+  return (best && bestDiff < 600) ? best : null; // tolerancia de 10 min
+}
+
 async function loadListas(){
   if (!currentToken) return;
   try {
@@ -1098,14 +1246,25 @@ async function loadListas(){
     const jobs = await res.json();
     if (!jobs.length){ $('listasEmpty').classList.remove('hidden'); $('listasBody').innerHTML=''; return; }
     $('listasEmpty').classList.add('hidden');
-    $('listasBody').innerHTML = jobs.map(j => `
-      <tr>
+
+    let localFiles = [];
+    try { localFiles = await pyApi().list_local_history(); } catch(e){}
+
+    $('listasBody').innerHTML = jobs.map(j => {
+      const match = findLocalFileForJob(j, localFiles);
+      const accion = match
+        ? `<button class="icon-btn" onclick='pyApi().open_path(${JSON.stringify(match.path)})' title="Abrir archivo guardado en esta computadora">
+             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+           </button>`
+        : `<span style="color:var(--ink-2);font-size:12.5px;">Sin copia en esta PC</span>`;
+      return `<tr>
         <td>${j.filename}</td>
         <td>${j.total_emails.toLocaleString()}</td>
         <td>${new Date(j.created_at).toLocaleString()}</td>
         <td><span class="badge-ok">✓ Completado</span></td>
-        <td style="color:var(--ink-2);font-size:12.5px;">Solo conteo agregado</td>
-      </tr>`).join('');
+        <td>${accion}</td>
+      </tr>`;
+    }).join('');
   } catch(e){ console.warn(e); }
 }
 
