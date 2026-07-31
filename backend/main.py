@@ -28,7 +28,7 @@ from supabase import create_client, Client
 SUPABASE_URL        = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY        = os.getenv("SUPABASE_KEY", "")
 FRONTEND_ORIGIN     = os.getenv("FRONTEND_ORIGIN", "*")
-FREE_SIGNUP_CREDITS = int(os.getenv("FREE_SIGNUP_CREDITS", "20"))
+FREE_SIGNUP_CREDITS = int(os.getenv("FREE_SIGNUP_CREDITS", "100"))
 MAX_EMAILS_PER_JOB  = int(os.getenv("MAX_EMAILS_PER_JOB", "300"))
 WORKERS             = int(os.getenv("VERIFY_WORKERS", "20"))
 
@@ -165,7 +165,9 @@ def register(email: str = Form(...), password: str = Form(...)):
     if not existing.data:
         db().table("users").insert({
             "email": email,
-            "credits": FREE_SIGNUP_CREDITS
+            "credits": FREE_SIGNUP_CREDITS,
+            "plan": "free",
+            "plan_status": "active",
         }).execute()
 
     return {
@@ -197,7 +199,9 @@ def login(email: str = Form(...), password: str = Form(...)):
     if not existing.data:
         db().table("users").insert({
             "email": email,
-            "credits": FREE_SIGNUP_CREDITS
+            "credits": FREE_SIGNUP_CREDITS,
+            "plan": "free",
+            "plan_status": "active",
         }).execute()
         user_data = db().table("users").select("*").eq("email", email).execute().data[0]
     else:
@@ -208,6 +212,8 @@ def login(email: str = Form(...), password: str = Form(...)):
         "token_type":   "bearer",
         "email":        email,
         "credits":      user_data["credits"],
+        "plan":         user_data.get("plan"),
+        "plan_status":  user_data.get("plan_status"),
     }
 
 
