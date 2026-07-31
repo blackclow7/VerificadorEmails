@@ -1,5 +1,5 @@
 """
-verifier_app.py — Green Email Data (App de Escritorio, Windows)
+verifier_app.py — Green Email Verifier (App de Escritorio, Windows)
 =====================================================================
 Esta app ya NO usa Tkinter para la interfaz: carga el mismo HTML/CSS/JS
 que la web (desktop_index.html) dentro de una ventana con WebView2
@@ -35,6 +35,7 @@ import smtplib
 import socket
 import pathlib
 import threading
+import time
 import webbrowser
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -53,13 +54,13 @@ HELO_DOMAIN  = "tudominio.com"
 SMTP_TIMEOUT = 10
 WORKERS      = 8
 
-KEYRING_SERVICE = "GreenEmailData"
+KEYRING_SERVICE = "GreenEmailVerifier"
 
 # Carpeta local donde se guarda automáticamente el detalle completo de cada
 # lote verificado — son archivos .csv reales en el disco del usuario, nunca
 # suben al servidor.
 LOCAL_HISTORY_DIR = os.path.join(
-    os.path.expanduser("~"), "GreenEmailData", "Historial"
+    os.path.expanduser("~"), "GreenEmailVerifier", "Historial"
 )
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -202,22 +203,33 @@ PORT25_TEST_HOSTS = [
 ]
 
 
+def _try_port25_host(host, timeout):
+    try:
+        with socket.create_connection((host, 25), timeout=timeout) as s:
+            s.settimeout(timeout)
+            banner = s.recv(256)
+            if banner.startswith(b"220"):
+                return True, host
+            return False, f"Respuesta inesperada de {host}: {banner[:60]!r}"
+    except socket.timeout:
+        return False, f"Timeout conectando a {host}"
+    except ConnectionRefusedError:
+        return False, f"Conexión rechazada por {host}"
+    except OSError as e:
+        return False, f"Error conectando a {host}: {e}"
+
+
 def check_port25_open(timeout=6):
+    """Prueba los 3 servidores EN PARALELO (no uno tras otro) para que el
+    peor caso sea ~timeout segundos en vez de ~3×timeout."""
     last_error = "No se pudo conectar a ningún servidor de prueba"
-    for host in PORT25_TEST_HOSTS:
-        try:
-            with socket.create_connection((host, 25), timeout=timeout) as s:
-                s.settimeout(timeout)
-                banner = s.recv(256)
-                if banner.startswith(b"220"):
-                    return True, host
-                last_error = f"Respuesta inesperada de {host}: {banner[:60]!r}"
-        except socket.timeout:
-            last_error = f"Timeout conectando a {host}"
-        except ConnectionRefusedError:
-            last_error = f"Conexión rechazada por {host}"
-        except OSError as e:
-            last_error = f"Error conectando a {host}: {e}"
+    with ThreadPoolExecutor(max_workers=len(PORT25_TEST_HOSTS)) as pool:
+        futures = {pool.submit(_try_port25_host, h, timeout): h for h in PORT25_TEST_HOSTS}
+        for future in as_completed(futures):
+            ok, info = future.result()
+            if ok:
+                return True, info
+            last_error = info
     return False, last_error
 
 
@@ -364,39 +376,71 @@ class Api:
         self.window = None  # se asigna después de crear la ventana
 
     # ── Puerto 25 ────────────────────────────────────────────────────────
-    def check_port25(self):
-        is_open, info = check_port25_open()
-        return {"open": is_open, "info": info}
+    def check_port25(self, context="default"):
+        """
+        No bloquea: corre la prueba en un hilo aparte y le avisa al HTML
+        cuando termina (window.onPort25Result). Si esto se ejecutara de
+        forma síncrona aquí, toda la ventana se congelaría durante los
+        varios segundos que tarda la prueba de red (pywebview corre las
+        funciones expuestas en el mismo hilo de la interfaz).
+        """
+        def worker():
+            is_open, info = check_port25_open()
+            if self.window:
+                try:
+                    payload = json.dumps({"context": context, "open": is_open, "info": info})
+                    self.window.evaluate_js(f"window.onPort25Result({payload})")
+                except Exception:
+                    pass
+        threading.Thread(target=worker, daemon=True).start()
+        return {"started": True}
 
     # ── Verificación SMTP real, con progreso en vivo empujado al HTML ───
     def verify_batch(self, file_path):
-        emails = extract_emails_from_file(file_path)
-        total  = len(emails)
-        results = []
+        """
+        Tampoco bloquea: arranca la verificación completa en un hilo aparte
+        y va empujando cada resultado (window.onVerifyProgress) y al final
+        el arreglo completo (window.onVerifyComplete). Un lote de miles de
+        emails podía tardar minutos — bloquear la interfaz ese tiempo sería
+        inaceptable.
+        """
+        def worker():
+            emails = extract_emails_from_file(file_path)
+            total  = len(emails)
+            results = []
 
-        def emit(done, result):
+            def emit(done, result):
+                if self.window:
+                    try:
+                        payload = json.dumps({"done": done, "total": total, "result": result})
+                        self.window.evaluate_js(f"window.onVerifyProgress({payload})")
+                    except Exception:
+                        pass
+
+            with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+                futures = {pool.submit(verify_email_local, e): e for e in emails}
+                done = 0
+                for future in as_completed(futures):
+                    r = future.result()
+                    results.append(r)
+                    done += 1
+                    emit(done, r)
+
             if self.window:
                 try:
-                    payload = json.dumps({"done": done, "total": total, "result": result})
-                    self.window.evaluate_js(f"window.onVerifyProgress({payload})")
+                    payload = json.dumps(results)
+                    self.window.evaluate_js(f"window.onVerifyComplete({payload})")
                 except Exception:
                     pass
 
-        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-            futures = {pool.submit(verify_email_local, e): e for e in emails}
-            done = 0
-            for future in as_completed(futures):
-                r = future.result()
-                results.append(r)
-                done += 1
-                emit(done, r)
-        return results
+        threading.Thread(target=worker, daemon=True).start()
+        return {"started": True}
 
     # ── Diálogos nativos de archivo ──────────────────────────────────────
     def choose_file(self):
         result = self.window.create_file_dialog(
             webview.OPEN_DIALOG,
-            file_types=("Archivos CSV/Excel (*.csv;*.xlsx;*.xls)", "Todos los archivos (*.*)"),
+            file_types=("Archivos CSV y Excel (*.csv;*.xlsx;*.xls)", "Todos los archivos (*.*)"),
         )
         return result[0] if result else None
 
@@ -487,17 +531,87 @@ def resource_path(relative_path):
     return os.path.join(base, relative_path)
 
 
+# Pantalla de carga: se muestra de inmediato (es HTML mínimo, sin puente
+# js_api, así que renderiza rápido) mientras la ventana real y WebView2
+# terminan de inicializarse por debajo. Sin esto, el usuario ve una ventana
+# en blanco o "No responde" durante ese arranque, aunque no sea un error.
+SPLASH_HTML = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+  html,body{ margin:0; height:100%; }
+  body{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#157A42; font-family:Segoe UI, Arial, sans-serif; color:#fff;
+  }
+  .spinner{
+    width:34px; height:34px; border:4px solid rgba(255,255,255,.3);
+    border-top-color:#fff; border-radius:50%; margin-bottom:16px;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .label{ font-size:14px; opacity:.9; }
+</style></head>
+<body>
+  <div class="spinner"></div>
+  <div class="label">Cargando Green Email Verifier…</div>
+</body></html>
+"""
+
+
 if __name__ == "__main__":
     api = Api()
-    window = webview.create_window(
-        "Green Email Data — Verificador de Escritorio",
+
+    splash = webview.create_window(
+        "Green Email Verifier",
+        html=SPLASH_HTML,
+        width=380,
+        height=220,
+        resizable=False,
+        frameless=True,
+        on_top=True,
+    )
+
+    main_window = webview.create_window(
+        "Green Email Verifier — Verificador de Escritorio",
         resource_path("desktop_index.html"),
         js_api=api,
         width=1280,
         height=820,
         min_size=(1024, 700),
+        hidden=True,  # se revela solo cuando ya está lista
     )
-    api.window = window
+    api.window = main_window
+
+    _revealed = threading.Event()
+
+    def _reveal_main():
+        if _revealed.is_set():
+            return
+        _revealed.set()
+        try:
+            main_window.show()
+        except Exception:
+            pass
+        try:
+            splash.destroy()
+        except Exception:
+            pass
+
+    def _on_main_loaded():
+        # Pequeño margen extra para que el puente js_api termine de asentarse
+        # antes de mostrar la ventana (el JS igual reintenta por su cuenta,
+        # esto solo mejora la primera impresión).
+        time.sleep(0.4)
+        _reveal_main()
+
+    def _fallback_timeout():
+        # Si por lo que sea el evento 'loaded' nunca dispara, no dejamos al
+        # usuario viendo el splash para siempre.
+        time.sleep(8)
+        _reveal_main()
+
+    main_window.events.loaded += _on_main_loaded
+    threading.Thread(target=_fallback_timeout, daemon=True).start()
+
     # Se fuerza explícitamente el motor EdgeChromium (WebView2). Sin esto,
     # dentro de un .exe empaquetado a veces pywebview cae en silencio a un
     # motor viejo (Trident/IE) que no soporta bien el puente js_api, y los
