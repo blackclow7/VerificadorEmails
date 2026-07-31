@@ -1221,8 +1221,34 @@ $('intervalAnnualBtn').onclick  = () => { billingInterval='annual';  renderBilli
 })();
 
 // ── Arranque ──────────────────────────────────────────────────────────────
+
+// El puente de pywebview a veces existe como objeto vacío una fracción de
+// segundo antes de que sus métodos terminen de registrarse. Esperamos a que
+// un método real (check_port25) ya sea una función antes de usarlo.
+function waitForPyApi(maxWaitMs = 6000){
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    (function poll(){
+      if (window.pywebview && window.pywebview.api &&
+          typeof window.pywebview.api.check_port25 === 'function'){
+        resolve();
+      } else if (Date.now() - start > maxWaitMs){
+        reject(new Error('El puente con la aplicación no respondió a tiempo.'));
+      } else {
+        setTimeout(poll, 60);
+      }
+    })();
+  });
+}
+
+let _booted = false;
 async function boot(){
+  if (_booted) return;
+  _booted = true;
+
   checkResetToken();
+  try { await waitForPyApi(); } catch(e){ /* seguimos igual; checkPort25 mostrará su propio error */ }
+
   checkPort25();
   await loadSession();
   if (currentToken && currentEmail){
@@ -1237,11 +1263,12 @@ async function boot(){
   showLoginView();
 }
 
-if (window.pywebview && window.pywebview.api){
-  boot();
-} else {
-  window.addEventListener('pywebviewready', boot);
-}
+window.addEventListener('pywebviewready', boot);
+document.addEventListener('DOMContentLoaded', () => {
+  if (window.pywebview && window.pywebview.api) boot();
+});
+// Respaldo por si ambos eventos ya pasaron antes de que este script corriera
+setTimeout(() => { if (!_booted) boot(); }, 300);
 </script>
 </body>
 </html>
