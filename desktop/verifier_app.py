@@ -29,9 +29,12 @@ import random
 import string
 import smtplib
 import socket
+import pathlib
+import webbrowser
 import threading
 import queue
 import tkinter as tk
+from datetime import datetime
 from tkinter import ttk, filedialog, messagebox
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -43,13 +46,110 @@ import keyring  # para guardar el token de forma segura en Windows Credential Ma
 # Configuración
 # ---------------------------------------------------------------------------
 API_BASE = "https://verificadoremails-api.onrender.com"
+WEB_APP_URL = "https://verificador-emails.vercel.app"
 
 FROM_ADDRESS = "verify@tudominio.com"
 HELO_DOMAIN  = "tudominio.com"
 SMTP_TIMEOUT = 10
 WORKERS      = 8
 
+# Carpeta local donde se guarda automáticamente el detalle completo de cada
+# lote verificado, para poder consultarlo o descargarlo después sin depender
+# del servidor (los resultados individuales nunca se suben, por privacidad).
+LOCAL_HISTORY_DIR = os.path.join(
+    os.path.expanduser("~"), "CorreoCertificado", "Historial"
+)
+
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# ---------------------------------------------------------------------------
+# Términos y Condiciones (BORRADOR — revisar con un abogado antes de publicar)
+# ---------------------------------------------------------------------------
+TERMS_AND_CONDITIONS = """TÉRMINOS Y CONDICIONES DE USO — CORREO CERTIFICADO
+(Borrador — pendiente de revisión legal)
+
+1. OBJETO DEL SERVICIO
+Correo Certificado ("el Software") es una herramienta técnica que permite validar
+si una dirección de correo electrónico tiene un formato correcto, si su dominio
+existe, si cuenta con registros MX, y opcionalmente si el servidor de destino
+confirma la existencia del buzón (verificación SMTP). El Software NO envía
+correos electrónicos ni realiza campañas de comunicación de ningún tipo.
+
+2. USO PERMITIDO
+El usuario se compromete a utilizar el Software únicamente para verificar
+direcciones de correo sobre las cuales tiene una base legítima de tratamiento
+(por ejemplo: listas propias de clientes, registros con consentimiento, o
+contactos obtenidos de forma lícita). Queda expresamente prohibido usar el
+Software para:
+  a) Validar listas de correos obtenidas de forma ilícita, robada o comprada
+     sin consentimiento de los titulares.
+  b) Facilitar el envío de correo no solicitado (spam) o campañas que violen
+     leyes de protección de datos o anti-spam aplicables (incluyendo, sin
+     limitarse a, la Ley Federal de Protección de Datos Personales en Posesión
+     de los Particulares en México, el CAN-SPAM Act en EE.UU., o el RGPD en
+     la Unión Europea, según corresponda al usuario).
+  c) Cualquier actividad que infrinja derechos de terceros o la legislación
+     vigente en la jurisdicción del usuario.
+
+3. RESPONSABILIDAD DEL USUARIO
+El usuario es el único responsable de:
+  a) El origen, legalidad y consentimiento asociado a las direcciones de
+     correo que decida verificar.
+  b) El uso que dé a los resultados obtenidos del Software.
+  c) Cumplir con toda ley, reglamento o normativa aplicable a su actividad,
+     incluyendo las relativas a protección de datos personales y comunicaciones
+     electrónicas.
+Correo Certificado actúa únicamente como proveedor de una herramienta técnica
+de validación y no participa, controla ni supervisa el uso que el usuario haga
+de las direcciones verificadas ni de los resultados obtenidos.
+
+4. PRECISIÓN DE LOS RESULTADOS
+Los resultados del Software (incluyendo estados como "MX válido", "Accepted",
+"Catch-All", etc.) son de carácter informativo y no constituyen una garantía
+absoluta de entregabilidad real del correo. Factores fuera del control de
+Correo Certificado (políticas de los servidores de destino, greylisting,
+bloqueos temporales, cambios de configuración del dominio, entre otros) pueden
+afectar la precisión del resultado en el momento de un envío real posterior.
+
+5. LIMITACIÓN DE RESPONSABILIDAD
+En la máxima medida permitida por la ley aplicable, Correo Certificado no será
+responsable por daños directos, indirectos, incidentales o consecuentes
+derivados de: (a) el uso indebido del Software por parte del usuario, (b)
+decisiones tomadas con base en los resultados de verificación, o (c) el
+incumplimiento por parte del usuario de leyes de protección de datos o
+anti-spam aplicables a su actividad.
+
+6. PRIVACIDAD Y MANEJO DE DATOS
+Esta aplicación de escritorio realiza la verificación de forma local en el
+equipo del usuario. Los correos individuales y sus resultados detallados NO
+se transmiten ni almacenan en los servidores de Correo Certificado — solo se
+reporta un conteo agregado por estado, necesario para descontar créditos de
+la cuenta del usuario. Ver la Política de Privacidad completa para más detalle.
+
+7. CRÉDITOS Y PAGOS
+El acceso a la verificación se rige por un sistema de créditos, adquiribles
+mediante planes de suscripción o paquetes de pago único. Los cargos se
+procesan a través de Stripe, Inc. Las políticas de reembolso, en su caso, se
+detallan por separado en la sección correspondiente de la plataforma web.
+
+8. REQUISITOS TÉCNICOS
+El uso de la verificación SMTP real requiere que el puerto 25 saliente esté
+disponible en la red del usuario. Correo Certificado no controla ni garantiza
+la disponibilidad de dicho puerto, que depende del proveedor de internet o de
+la red del usuario.
+
+9. MODIFICACIONES
+Correo Certificado podrá actualizar estos Términos y Condiciones en cualquier
+momento. El uso continuado del Software tras una actualización constituye la
+aceptación de los nuevos términos.
+
+10. LEGISLACIÓN APLICABLE
+[Pendiente de definir con asesoría legal: país/jurisdicción y mecanismo de
+resolución de controversias aplicable.]
+
+Al marcar la casilla "Acepto los Términos y Condiciones", el usuario declara
+haber leído, entendido y aceptado íntegramente este documento.
+"""
 
 # ---------------------------------------------------------------------------
 # Toxicidad (portada completa del script original)
@@ -419,11 +519,41 @@ class App(tk.Tk):
         self.pass_entry.pack(pady=(4, 16))
         self.pass_entry.bind("<Return>", lambda e: self._login())
 
+        # ── Requisito: puerto 25 abierto en esta red ────────────────────────
+        self.login_port25_open = None  # None = probando, True/False = resultado
+        port_frame = tk.Frame(self.login_frame, bg="#12213B")
+        port_frame.pack(fill="x", pady=(0, 10))
+        self.login_port_label = tk.Label(
+            port_frame, text="Verificando puerto 25 de tu red…",
+            font=("Consolas", 9, "bold"), fg="#B08D57", bg="#12213B", wraplength=340, justify="left")
+        self.login_port_label.pack(anchor="w")
+        tk.Button(port_frame, text="Volver a probar", command=self._test_port25_login,
+                  bg="#1B3055", fg="white", relief="flat", font=("Segoe UI", 8),
+                  padx=8, pady=3).pack(anchor="w", pady=(4, 0))
+
+        # ── Requisito: aceptar Términos y Condiciones ───────────────────────
+        self.terms_accepted = tk.BooleanVar(value=False)
+        self.terms_accepted.trace_add("write", lambda *a: self._update_login_btn_state())
+        terms_frame = tk.Frame(self.login_frame, bg="#12213B")
+        terms_frame.pack(fill="x", pady=(4, 16))
+        tk.Checkbutton(
+            terms_frame, variable=self.terms_accepted, bg="#12213B",
+            activebackground="#12213B", selectcolor="#1B3055",
+        ).pack(side="left")
+        tk.Label(terms_frame, text="Acepto los", font=("Segoe UI", 9),
+                 fg="#F6EFE2", bg="#12213B").pack(side="left")
+        terms_link = tk.Label(terms_frame, text="Términos y Condiciones",
+                               font=("Segoe UI", 9, "underline"),
+                               fg="#B08D57", bg="#12213B", cursor="hand2")
+        terms_link.pack(side="left", padx=(4, 0))
+        terms_link.bind("<Button-1>", lambda e: self._show_terms())
+
         btn_frame = tk.Frame(self.login_frame, bg="#12213B")
         btn_frame.pack()
-        tk.Button(btn_frame, text="Entrar", command=self._login,
+        self.login_btn = tk.Button(btn_frame, text="Entrar", command=self._login,
                   bg="#C1272D", fg="white", font=("Segoe UI", 11, "bold"),
-                  relief="flat", padx=16, pady=8).pack(side="left")
+                  relief="flat", padx=16, pady=8, state="disabled")
+        self.login_btn.pack(side="left")
         tk.Button(btn_frame, text="Crear cuenta", command=self._open_register,
                   bg="#1B3055", fg="white", font=("Segoe UI", 10),
                   relief="flat", padx=12, pady=8).pack(side="left", padx=(10, 0))
@@ -434,6 +564,61 @@ class App(tk.Tk):
 
         # Intentar restaurar sesión guardada
         self._restore_session()
+        # Probar el puerto 25 en cuanto se abre la pantalla de login
+        self._test_port25_login()
+
+    def _show_terms(self):
+        win = tk.Toplevel(self)
+        win.title("Términos y Condiciones")
+        win.geometry("640x520")
+        win.configure(bg="#12213B")
+        text = tk.Text(win, wrap="word", bg="#F6EFE2", fg="#12213B",
+                        font=("Segoe UI", 10), padx=14, pady=14)
+        text.insert("1.0", TERMS_AND_CONDITIONS)
+        text.config(state="disabled")
+        text.pack(fill="both", expand=True, padx=10, pady=10)
+        tk.Button(win, text="Cerrar", command=win.destroy,
+                  bg="#1B3055", fg="white", relief="flat", padx=12, pady=6).pack(pady=(0, 10))
+
+    def _test_port25_login(self):
+        """Prueba el puerto 25 desde la pantalla de login. Es un requisito para
+        poder entrar: si está bloqueado, el usuario no podrá verificar nada
+        real con esta app, así que se le avisa ANTES de loguearse."""
+        self.login_port25_open = None
+        self.login_port_label.config(text="Verificando puerto 25 de tu red…", fg="#B08D57")
+        self.login_btn.config(state="disabled")
+
+        q = queue.Queue()
+
+        def worker():
+            q.put(check_port25_open())
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        def poll():
+            try:
+                is_open, info = q.get_nowait()
+            except queue.Empty:
+                self.after(200, poll)
+                return
+            self.login_port25_open = is_open
+            if is_open:
+                self.login_port_label.config(
+                    text=f"✅ Puerto 25 abierto (respondió {info}). Puedes iniciar sesión.",
+                    fg="#3B7A57")
+            else:
+                self.login_port_label.config(
+                    text=f"❌ Puerto 25 bloqueado en esta red — {info}\n"
+                         "No podrás verificar correos por SMTP real desde aquí. "
+                         "Prueba desde otra red o contacta a tu proveedor de internet.",
+                    fg="#C1272D")
+            self._update_login_btn_state()
+
+        self.after(200, poll)
+
+    def _update_login_btn_state(self):
+        can_login = bool(self.login_port25_open) and self.terms_accepted.get()
+        self.login_btn.config(state="normal" if can_login else "disabled")
 
     def _open_register(self):
         import webbrowser
@@ -451,7 +636,8 @@ class App(tk.Tk):
                                     headers={"Authorization": f"Bearer {token}"},
                                     timeout=15)
                 if res.ok:
-                    data = self._after_login(email, token, res.json()["credits"])
+                    user_data = res.json()
+                    self._after_login(email, token, user_data["credits"], user_data.get("plan"))
                     return
         except Exception:
             pass
@@ -462,6 +648,16 @@ class App(tk.Tk):
             pass
 
     def _login(self):
+        if not self.login_port25_open:
+            self.login_status.config(
+                text="No puedes iniciar sesión: el puerto 25 debe estar abierto en tu red.",
+                fg="#C1272D")
+            return
+        if not self.terms_accepted.get():
+            self.login_status.config(
+                text="Debes aceptar los Términos y Condiciones para continuar.",
+                fg="#C1272D")
+            return
         email    = self.email_entry.get().strip().lower()
         password = self.pass_entry.get()
         if not email or "@" not in email:
@@ -488,16 +684,17 @@ class App(tk.Tk):
                 keyring.set_password("CorreoCertificado", "user_email", data["email"])
             except Exception:
                 pass
-            self._after_login(data["email"], token, data["credits"])
+            self._after_login(data["email"], token, data["credits"], data.get("plan"))
         except Exception as e:
             self.login_status.config(text=f"No se pudo conectar: {e}", fg="#C1272D")
 
-    def _after_login(self, email, token, credits):
+    def _after_login(self, email, token, credits, plan=None):
         self.user_email = email
         self.auth_token = token
         self.login_frame.pack_forget()
         self.main_frame.pack(fill="both", expand=True)
         self._refresh_credits(credits)
+        self._refresh_plan(plan)
         self._test_port25()
 
     # ── Main ───────────────────────────────────────────────────────────────
@@ -510,10 +707,26 @@ class App(tk.Tk):
         top.pack(fill="x", pady=(0, 4))
         tk.Label(top, text="Correo Certificado", font=("Segoe UI", 16, "bold"),
                  fg="#F6EFE2", bg="#12213B").pack(side="left")
+
+        tk.Button(top, text="Cerrar sesión", command=self._logout,
+                  bg="#1B3055", fg="white", relief="flat", padx=10, pady=6,
+                  font=("Segoe UI", 9)).pack(side="right", padx=(8, 0))
+        tk.Button(top, text="Historial", command=self._open_history,
+                  bg="#1B3055", fg="white", relief="flat", padx=10, pady=6,
+                  font=("Segoe UI", 9)).pack(side="right", padx=(8, 0))
+        tk.Button(top, text="Comprar créditos", command=self._open_buy_credits,
+                  bg="#B08D57", fg="white", relief="flat", padx=10, pady=6,
+                  font=("Segoe UI", 9, "bold")).pack(side="right", padx=(8, 0))
+
         self.credits_label = tk.Label(top, text="Créditos: —",
                                        font=("Consolas", 12, "bold"),
                                        fg="#C1272D", bg="#F6EFE2", padx=12, pady=6)
         self.credits_label.pack(side="right")
+
+        self.plan_label = tk.Label(top, text="Sin plan activo",
+                                    font=("Segoe UI", 10, "bold"),
+                                    fg="#12213B", bg="#B08D57", padx=10, pady=6)
+        self.plan_label.pack(side="right", padx=(0, 8))
 
         # Aviso de privacidad
         tk.Label(self.main_frame,
@@ -624,6 +837,138 @@ class App(tk.Tk):
 
     def _refresh_credits(self, credits):
         self.credits_label.config(text=f"Créditos: {credits}")
+
+    def _refresh_plan(self, plan):
+        if plan:
+            self.plan_label.config(text=f"Plan {plan.capitalize()}", bg="#3B7A57", fg="white")
+        else:
+            self.plan_label.config(text="Sin plan activo", bg="#B08D57", fg="#12213B")
+
+    def _logout(self):
+        """Cierra sesión: borra el token guardado y regresa a la pantalla de login."""
+        try:
+            keyring.delete_password("CorreoCertificado", "access_token")
+            keyring.delete_password("CorreoCertificado", "user_email")
+        except Exception:
+            pass
+        self.user_email    = None
+        self.auth_token    = None
+        self.selected_file = None
+        self.results       = []
+        self.main_frame.pack_forget()
+        self._refresh_plan(None)
+        self.email_entry.delete(0, "end")
+        self.pass_entry.delete(0, "end")
+        self.login_status.config(text="")
+        self.login_frame.pack(expand=True)
+
+    def _open_buy_credits(self):
+        """
+        Abre en el navegador la página de planes/créditos de la web.
+        La compra en sí se hace ahí con Stripe Checkout — este botón ya
+        queda funcional en cuanto esa pantalla esté publicada, sin tener
+        que tocar la app de escritorio de nuevo.
+        """
+        webbrowser.open(f"{WEB_APP_URL}/#planes")
+
+    def _open_history(self):
+        """
+        Ventana con dos pestañas:
+          - 'Servidor': conteo agregado de todos tus lotes (igual en cualquier
+            dispositivo donde inicies sesión).
+          - 'Este equipo': el detalle completo (cada email, su resultado) que
+            se guarda automáticamente aquí después de cada verificación —
+            nunca se sube al servidor, así que solo existe en esta máquina.
+        """
+        win = tk.Toplevel(self)
+        win.title("Historial de lotes")
+        win.geometry("780x480")
+        win.configure(bg="#12213B")
+
+        nb = ttk.Notebook(win)
+        nb.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # --- Pestaña: historial del servidor (solo conteos agregados) ---
+        server_tab = tk.Frame(nb, bg="#12213B")
+        nb.add(server_tab, text="Servidor (conteos)")
+
+        cols = ("filename", "total", "fecha")
+        server_tree = ttk.Treeview(server_tab, columns=cols, show="headings", height=16)
+        for col, w, txt in [("filename", 320, "Archivo"), ("total", 90, "Emails"), ("fecha", 200, "Fecha")]:
+            server_tree.heading(col, text=txt)
+            server_tree.column(col, width=w)
+        server_tree.pack(fill="both", expand=True)
+
+        try:
+            res = requests.get(
+                f"{API_BASE}/api/jobs/history",
+                headers={"Authorization": f"Bearer {self.auth_token}"},
+                timeout=15,
+            )
+            res.raise_for_status()
+            for job in res.json():
+                server_tree.insert("", "end", values=(
+                    job.get("filename", "—"),
+                    job.get("total_emails", "—"),
+                    job.get("created_at", "—"),
+                ))
+        except Exception as e:
+            tk.Label(server_tab, text=f"No se pudo cargar el historial: {e}",
+                      fg="#C1272D", bg="#12213B").pack(pady=8)
+
+        # --- Pestaña: historial local (detalle completo, descargable) ---
+        local_tab = tk.Frame(nb, bg="#12213B", padx=10, pady=10)
+        nb.add(local_tab, text="Este equipo (detalle completo)")
+
+        tk.Label(
+            local_tab,
+            text="Estos archivos viven únicamente en esta computadora — "
+                 "puedes abrirlos o copiarlos cuando quieras.",
+            fg="#B08D57", bg="#12213B", wraplength=700, justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+
+        list_frame = tk.Frame(local_tab, bg="#12213B")
+        list_frame.pack(fill="both", expand=True)
+
+        local_list = tk.Listbox(list_frame, bg="#F6EFE2", font=("Consolas", 10))
+        local_list.pack(side="left", fill="both", expand=True)
+        vsb2 = ttk.Scrollbar(list_frame, orient="vertical", command=local_list.yview)
+        local_list.configure(yscrollcommand=vsb2.set)
+        vsb2.pack(side="left", fill="y")
+
+        os.makedirs(LOCAL_HISTORY_DIR, exist_ok=True)
+        files = sorted(pathlib.Path(LOCAL_HISTORY_DIR).glob("*.csv"), reverse=True)
+        for f in files:
+            local_list.insert("end", f.name)
+        if not files:
+            local_list.insert("end", "(aún no hay lotes verificados desde esta computadora)")
+
+        def _open_selected():
+            sel = local_list.curselection()
+            if not sel or not files:
+                return
+            idx = sel[0]
+            if idx >= len(files):
+                return
+            path = str(files[idx])
+            try:
+                os.startfile(path)  # Windows
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo abrir el archivo: {e}")
+
+        def _open_folder():
+            os.makedirs(LOCAL_HISTORY_DIR, exist_ok=True)
+            try:
+                os.startfile(LOCAL_HISTORY_DIR)  # Windows
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo abrir la carpeta: {e}")
+
+        btn_row = tk.Frame(local_tab, bg="#12213B")
+        btn_row.pack(fill="x", pady=(8, 0))
+        tk.Button(btn_row, text="Abrir archivo seleccionado", command=_open_selected,
+                  bg="#1B3055", fg="white", relief="flat", padx=10, pady=6).pack(side="left")
+        tk.Button(btn_row, text="Abrir carpeta", command=_open_folder,
+                  bg="#1B3055", fg="white", relief="flat", padx=10, pady=6).pack(side="left", padx=(8, 0))
 
     def _test_port25(self):
         self.port_status_label.config(text="Puerto 25: probando...", fg="#B08D57")
@@ -840,11 +1185,28 @@ class App(tk.Tk):
 
         self.verify_btn.config(state="normal")
         self.export_btn.config(state="normal")
+
+        # Guardado automático local (detalle completo) — nunca sube al servidor.
+        try:
+            os.makedirs(LOCAL_HISTORY_DIR, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base = os.path.splitext(os.path.basename(self.selected_file))[0]
+            auto_path = os.path.join(LOCAL_HISTORY_DIR, f"{ts}_{base}.csv")
+            with open(auto_path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["email", "status", "detalle", "toxicidad", "señales_toxicidad"])
+                for r in self.results:
+                    writer.writerow([r["email"], r["status"], r["detalle"],
+                                      r["toxicidad"], r["señales_toxicidad"]])
+        except Exception:
+            pass  # el guardado automático no debe interrumpir el flujo si falla
+
         messagebox.showinfo(
             "Recuerda exportar",
             "El detalle completo (cada email con su resultado) solo existe aquí, "
             "en esta computadora — no quedó copia en el servidor.\n\n"
-            "Usa 'Exportar CSV' si quieres conservarlo."
+            "Se guardó automáticamente en tu historial local (botón 'Historial' "
+            "arriba). También puedes usar 'Exportar CSV' para guardarlo en otra ubicación."
         )
 
     # ── Exportar CSV ───────────────────────────────────────────────────────
