@@ -372,6 +372,7 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
 
   <div class="main-area">
     <div class="topbar">
+      <div id="planTopbarBadge" class="badge-ok" style="margin-right:14px;">Sin plan activo</div>
       <div class="credits-pill">
         <div class="label">Créditos disponibles</div>
         <div class="value" id="creditsValue">—</div>
@@ -589,11 +590,25 @@ function showApp(email, credits, plan){
   $('userCardEmail').textContent = email;
   $('userCardPlan').textContent = plan ? `Plan ${plan}` : 'Sin plan activo';
   $('userAvatar').textContent = email.slice(0,2).toUpperCase();
+  updatePlanBadge(plan);
   goToPage('verificador');
   loadListas();
   renderExports();
   loadCreditos();
   loadAjustes();
+}
+
+function updatePlanBadge(plan){
+  const badge = $('planTopbarBadge');
+  if (plan){
+    badge.textContent = `Plan ${plan.charAt(0).toUpperCase()+plan.slice(1)}`;
+    badge.style.background = 'var(--green-light)';
+    badge.style.color = 'var(--green-dark)';
+  } else {
+    badge.textContent = 'Sin plan activo';
+    badge.style.background = '#F3F4F6';
+    badge.style.color = 'var(--ink-2)';
+  }
 }
 
 // ── Navegación entre páginas ─────────────────────────────────────────────
@@ -1020,6 +1035,7 @@ async function loadCreditos(){
     $('creditosBigNumber').textContent = user.credits;
     $('planNameLabel').textContent = user.plan ? `Tu plan: ${user.plan}` : 'Sin plan activo';
     $('userCardPlan').textContent = user.plan ? `Plan ${user.plan}` : 'Sin plan activo';
+    updatePlanBadge(user.plan);
     $('planRenewLabel').textContent = user.plan_period_end
       ? `Renovación: ${new Date(user.plan_period_end).toLocaleDateString()}`
       : 'Compra un plan o créditos sueltos';
