@@ -57,7 +57,7 @@ WORKERS      = 8
 # lote verificado, para poder consultarlo o descargarlo después sin depender
 # del servidor (los resultados individuales nunca se suben, por privacidad).
 LOCAL_HISTORY_DIR = os.path.join(
-    os.path.expanduser("~"), "CorreoCertificado", "Historial"
+    os.path.expanduser("~"), "GreenEmailData", "Historial"
 )
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -65,11 +65,11 @@ EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # ---------------------------------------------------------------------------
 # Términos y Condiciones (BORRADOR — revisar con un abogado antes de publicar)
 # ---------------------------------------------------------------------------
-TERMS_AND_CONDITIONS = """TÉRMINOS Y CONDICIONES DE USO — CORREO CERTIFICADO
+TERMS_AND_CONDITIONS = """TÉRMINOS Y CONDICIONES DE USO — GREEN EMAIL DATA
 (Borrador — pendiente de revisión legal)
 
 1. OBJETO DEL SERVICIO
-Correo Certificado ("el Software") es una herramienta técnica que permite validar
+Green Email Data ("el Software") es una herramienta técnica que permite validar
 si una dirección de correo electrónico tiene un formato correcto, si su dominio
 existe, si cuenta con registros MX, y opcionalmente si el servidor de destino
 confirma la existencia del buzón (verificación SMTP). El Software NO envía
@@ -99,7 +99,7 @@ El usuario es el único responsable de:
   c) Cumplir con toda ley, reglamento o normativa aplicable a su actividad,
      incluyendo las relativas a protección de datos personales y comunicaciones
      electrónicas.
-Correo Certificado actúa únicamente como proveedor de una herramienta técnica
+Green Email Data actúa únicamente como proveedor de una herramienta técnica
 de validación y no participa, controla ni supervisa el uso que el usuario haga
 de las direcciones verificadas ni de los resultados obtenidos.
 
@@ -107,12 +107,12 @@ de las direcciones verificadas ni de los resultados obtenidos.
 Los resultados del Software (incluyendo estados como "MX válido", "Accepted",
 "Catch-All", etc.) son de carácter informativo y no constituyen una garantía
 absoluta de entregabilidad real del correo. Factores fuera del control de
-Correo Certificado (políticas de los servidores de destino, greylisting,
+Green Email Data (políticas de los servidores de destino, greylisting,
 bloqueos temporales, cambios de configuración del dominio, entre otros) pueden
 afectar la precisión del resultado en el momento de un envío real posterior.
 
 5. LIMITACIÓN DE RESPONSABILIDAD
-En la máxima medida permitida por la ley aplicable, Correo Certificado no será
+En la máxima medida permitida por la ley aplicable, Green Email Data no será
 responsable por daños directos, indirectos, incidentales o consecuentes
 derivados de: (a) el uso indebido del Software por parte del usuario, (b)
 decisiones tomadas con base en los resultados de verificación, o (c) el
@@ -122,7 +122,7 @@ anti-spam aplicables a su actividad.
 6. PRIVACIDAD Y MANEJO DE DATOS
 Esta aplicación de escritorio realiza la verificación de forma local en el
 equipo del usuario. Los correos individuales y sus resultados detallados NO
-se transmiten ni almacenan en los servidores de Correo Certificado — solo se
+se transmiten ni almacenan en los servidores de Green Email Data — solo se
 reporta un conteo agregado por estado, necesario para descontar créditos de
 la cuenta del usuario. Ver la Política de Privacidad completa para más detalle.
 
@@ -134,12 +134,12 @@ detallan por separado en la sección correspondiente de la plataforma web.
 
 8. REQUISITOS TÉCNICOS
 El uso de la verificación SMTP real requiere que el puerto 25 saliente esté
-disponible en la red del usuario. Correo Certificado no controla ni garantiza
+disponible en la red del usuario. Green Email Data no controla ni garantiza
 la disponibilidad de dicho puerto, que depende del proveedor de internet o de
 la red del usuario.
 
 9. MODIFICACIONES
-Correo Certificado podrá actualizar estos Términos y Condiciones en cualquier
+Green Email Data podrá actualizar estos Términos y Condiciones en cualquier
 momento. El uso continuado del Software tras una actualización constituye la
 aceptación de los nuevos términos.
 
@@ -464,24 +464,24 @@ def extract_emails_from_file(path):
 
 # Colores por estado (igual que STATUS_COLORS del script original)
 STATUS_COLORS_TK = {
-    "Accepted":   "#3B7A57",   # verde
+    "Accepted":   "#1F8A4C",   # verde marca
     "Catch-All":  "#1B7A8C",   # cian oscuro
-    "Greylisted": "#B08D57",   # ámbar
-    "Limited":    "#B08D57",
-    "Timeout":    "#B08D57",
+    "Greylisted": "#D97706",   # ámbar
+    "Limited":    "#D97706",
+    "Timeout":    "#D97706",
     "SPAM Block": "#8B3A8B",   # magenta
-    "Rejected":   "#C1272D",   # rojo
-    "MX Error":   "#C1272D",
-    "No MX":      "#C1272D",
+    "Rejected":   "#DC2626",   # rojo
+    "MX Error":   "#DC2626",
+    "No MX":      "#DC2626",
 }
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Correo Certificado — Verificador de Escritorio")
+        self.title("Green Email Data — Verificador de Escritorio")
         self.geometry("900x640")
-        self.configure(bg="#12213B")
+        self.configure(bg="#FAFAFA")
 
         self.user_email    = None
         self.auth_token    = None
@@ -498,68 +498,69 @@ class App(tk.Tk):
     # ── Login ──────────────────────────────────────────────────────────────
 
     def _build_login_frame(self):
-        self.login_frame = tk.Frame(self, bg="#12213B", padx=40, pady=40)
+        self.login_frame = tk.Frame(self, bg="#FAFAFA", padx=40, pady=40)
         self.login_frame.pack(expand=True)
 
-        tk.Label(self.login_frame, text="Correo Certificado",
-                 font=("Segoe UI", 22, "bold"), fg="#F6EFE2", bg="#12213B").pack(pady=(0, 4))
+        tk.Label(self.login_frame, text="Green Email Data",
+                 font=("Segoe UI", 22, "bold"), fg="#166B3A", bg="#FAFAFA").pack(pady=(0, 4))
         tk.Label(self.login_frame,
                  text="Verificador de escritorio — SMTP real, puerto 25 local",
-                 font=("Segoe UI", 10), fg="#B08D57", bg="#12213B").pack(pady=(0, 24))
+                 font=("Segoe UI", 10), fg="#6B7280", bg="#FAFAFA").pack(pady=(0, 24))
 
         tk.Label(self.login_frame, text="Email:", font=("Segoe UI", 11),
-                 fg="#F6EFE2", bg="#12213B").pack(anchor="w")
-        self.email_entry = tk.Entry(self.login_frame, font=("Consolas", 12), width=36)
+                 fg="#16181D", bg="#FAFAFA").pack(anchor="w")
+        self.email_entry = tk.Entry(self.login_frame, font=("Consolas", 12), width=36,
+                                     relief="solid", bd=1)
         self.email_entry.pack(pady=(4, 10))
 
         tk.Label(self.login_frame, text="Contraseña:", font=("Segoe UI", 11),
-                 fg="#F6EFE2", bg="#12213B").pack(anchor="w")
+                 fg="#16181D", bg="#FAFAFA").pack(anchor="w")
         self.pass_entry = tk.Entry(self.login_frame, font=("Consolas", 12),
-                                    width=36, show="●")
+                                    width=36, show="●", relief="solid", bd=1)
         self.pass_entry.pack(pady=(4, 16))
         self.pass_entry.bind("<Return>", lambda e: self._login())
 
         # ── Requisito: puerto 25 abierto en esta red ────────────────────────
         self.login_port25_open = None  # None = probando, True/False = resultado
-        port_frame = tk.Frame(self.login_frame, bg="#12213B")
+        port_frame = tk.Frame(self.login_frame, bg="#FAFAFA")
         port_frame.pack(fill="x", pady=(0, 10))
         self.login_port_label = tk.Label(
             port_frame, text="Verificando puerto 25 de tu red…",
-            font=("Consolas", 9, "bold"), fg="#B08D57", bg="#12213B", wraplength=340, justify="left")
+            font=("Consolas", 9, "bold"), fg="#6B7280", bg="#FAFAFA", wraplength=340, justify="left")
         self.login_port_label.pack(anchor="w")
         tk.Button(port_frame, text="Volver a probar", command=self._test_port25_login,
-                  bg="#1B3055", fg="white", relief="flat", font=("Segoe UI", 8),
+                  bg="#166B3A", fg="white", relief="flat", font=("Segoe UI", 8),
                   padx=8, pady=3).pack(anchor="w", pady=(4, 0))
 
         # ── Requisito: aceptar Términos y Condiciones ───────────────────────
         self.terms_accepted = tk.BooleanVar(value=False)
         self.terms_accepted.trace_add("write", lambda *a: self._update_login_btn_state())
-        terms_frame = tk.Frame(self.login_frame, bg="#12213B")
+        terms_frame = tk.Frame(self.login_frame, bg="#FAFAFA")
         terms_frame.pack(fill="x", pady=(4, 16))
         tk.Checkbutton(
-            terms_frame, variable=self.terms_accepted, bg="#12213B",
-            activebackground="#12213B", selectcolor="#1B3055",
+            terms_frame, variable=self.terms_accepted, bg="#FAFAFA",
+            activebackground="#FAFAFA", selectcolor="#EAF6EE",
         ).pack(side="left")
         tk.Label(terms_frame, text="Acepto los", font=("Segoe UI", 9),
-                 fg="#F6EFE2", bg="#12213B").pack(side="left")
+                 fg="#16181D", bg="#FAFAFA").pack(side="left")
         terms_link = tk.Label(terms_frame, text="Términos y Condiciones",
                                font=("Segoe UI", 9, "underline"),
-                               fg="#B08D57", bg="#12213B", cursor="hand2")
+                               fg="#1F8A4C", bg="#FAFAFA", cursor="hand2")
         terms_link.pack(side="left", padx=(4, 0))
         terms_link.bind("<Button-1>", lambda e: self._show_terms())
 
-        btn_frame = tk.Frame(self.login_frame, bg="#12213B")
+        btn_frame = tk.Frame(self.login_frame, bg="#FAFAFA")
         btn_frame.pack()
         self.login_btn = tk.Button(btn_frame, text="Entrar", command=self._login,
-                  bg="#C1272D", fg="white", font=("Segoe UI", 11, "bold"),
+                  bg="#1F8A4C", fg="white", font=("Segoe UI", 11, "bold"),
                   relief="flat", padx=16, pady=8, state="disabled")
         self.login_btn.pack(side="left")
         tk.Button(btn_frame, text="Crear cuenta", command=self._open_register,
-                  bg="#1B3055", fg="white", font=("Segoe UI", 10),
+                  bg="#166B3A", fg="white", font=("Segoe UI", 10),
                   relief="flat", padx=12, pady=8).pack(side="left", padx=(10, 0))
 
         self.login_status = tk.Label(self.login_frame, text="",
-                                      font=("Segoe UI", 10), fg="#C1272D", bg="#12213B")
+                                      font=("Segoe UI", 10), fg="#DC2626", bg="#FAFAFA")
         self.login_status.pack(pady=(12, 0))
 
         # Intentar restaurar sesión guardada
@@ -571,21 +572,21 @@ class App(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Términos y Condiciones")
         win.geometry("640x520")
-        win.configure(bg="#12213B")
-        text = tk.Text(win, wrap="word", bg="#F6EFE2", fg="#12213B",
-                        font=("Segoe UI", 10), padx=14, pady=14)
+        win.configure(bg="#FAFAFA")
+        text = tk.Text(win, wrap="word", bg="#FFFFFF", fg="#16181D",
+                        font=("Segoe UI", 10), padx=14, pady=14, relief="solid", bd=1)
         text.insert("1.0", TERMS_AND_CONDITIONS)
         text.config(state="disabled")
         text.pack(fill="both", expand=True, padx=10, pady=10)
         tk.Button(win, text="Cerrar", command=win.destroy,
-                  bg="#1B3055", fg="white", relief="flat", padx=12, pady=6).pack(pady=(0, 10))
+                  bg="#166B3A", fg="white", relief="flat", padx=12, pady=6).pack(pady=(0, 10))
 
     def _test_port25_login(self):
         """Prueba el puerto 25 desde la pantalla de login. Es un requisito para
         poder entrar: si está bloqueado, el usuario no podrá verificar nada
         real con esta app, así que se le avisa ANTES de loguearse."""
         self.login_port25_open = None
-        self.login_port_label.config(text="Verificando puerto 25 de tu red…", fg="#B08D57")
+        self.login_port_label.config(text="Verificando puerto 25 de tu red…", fg="#6B7280")
         self.login_btn.config(state="disabled")
 
         q = queue.Queue()
@@ -605,13 +606,13 @@ class App(tk.Tk):
             if is_open:
                 self.login_port_label.config(
                     text=f"✅ Puerto 25 abierto (respondió {info}). Puedes iniciar sesión.",
-                    fg="#3B7A57")
+                    fg="#1F8A4C")
             else:
                 self.login_port_label.config(
                     text=f"❌ Puerto 25 bloqueado en esta red — {info}\n"
                          "No podrás verificar correos por SMTP real desde aquí. "
                          "Prueba desde otra red o contacta a tu proveedor de internet.",
-                    fg="#C1272D")
+                    fg="#DC2626")
             self._update_login_btn_state()
 
         self.after(200, poll)
@@ -621,16 +622,15 @@ class App(tk.Tk):
         self.login_btn.config(state="normal" if can_login else "disabled")
 
     def _open_register(self):
-        import webbrowser
-        webbrowser.open("https://verificador-emails.vercel.app")
+        webbrowser.open(WEB_APP_URL)
 
     def _restore_session(self):
         """Intenta restaurar el token guardado en el Credential Manager de Windows."""
         try:
-            token = keyring.get_password("CorreoCertificado", "access_token")
-            email = keyring.get_password("CorreoCertificado", "user_email")
+            token = keyring.get_password("GreenEmailData", "access_token")
+            email = keyring.get_password("GreenEmailData", "user_email")
             if token and email:
-                self.login_status.config(text="Restaurando sesión...", fg="#B08D57")
+                self.login_status.config(text="Restaurando sesión...", fg="#6B7280")
                 self.update()
                 res = requests.get(f"{API_BASE}/api/user/me",
                                     headers={"Authorization": f"Bearer {token}"},
@@ -642,8 +642,8 @@ class App(tk.Tk):
         except Exception:
             pass
         try:
-            keyring.delete_password("CorreoCertificado", "access_token")
-            keyring.delete_password("CorreoCertificado", "user_email")
+            keyring.delete_password("GreenEmailData", "access_token")
+            keyring.delete_password("GreenEmailData", "user_email")
         except Exception:
             pass
 
@@ -666,7 +666,7 @@ class App(tk.Tk):
         if not password:
             self.login_status.config(text="Ingresa tu contraseña")
             return
-        self.login_status.config(text="Conectando...", fg="#B08D57")
+        self.login_status.config(text="Conectando...", fg="#6B7280")
         self.update()
         try:
             res = requests.post(f"{API_BASE}/api/auth/login",
@@ -680,8 +680,8 @@ class App(tk.Tk):
             token = data["access_token"]
             # Guardar token de forma segura
             try:
-                keyring.set_password("CorreoCertificado", "access_token", token)
-                keyring.set_password("CorreoCertificado", "user_email", data["email"])
+                keyring.set_password("GreenEmailData", "access_token", token)
+                keyring.set_password("GreenEmailData", "user_email", data["email"])
             except Exception:
                 pass
             self._after_login(data["email"], token, data["credits"], data.get("plan"))
@@ -700,75 +700,77 @@ class App(tk.Tk):
     # ── Main ───────────────────────────────────────────────────────────────
 
     def _build_main_frame(self):
-        self.main_frame = tk.Frame(self, bg="#12213B", padx=20, pady=16)
+        self.main_frame = tk.Frame(self, bg="#FAFAFA", padx=20, pady=16)
 
         # Cabecera
-        top = tk.Frame(self.main_frame, bg="#12213B")
+        top = tk.Frame(self.main_frame, bg="#FAFAFA")
         top.pack(fill="x", pady=(0, 4))
-        tk.Label(top, text="Correo Certificado", font=("Segoe UI", 16, "bold"),
-                 fg="#F6EFE2", bg="#12213B").pack(side="left")
+        tk.Label(top, text="Green Email Data", font=("Segoe UI", 16, "bold"),
+                 fg="#166B3A", bg="#FAFAFA").pack(side="left")
 
         tk.Button(top, text="Cerrar sesión", command=self._logout,
-                  bg="#1B3055", fg="white", relief="flat", padx=10, pady=6,
+                  bg="#166B3A", fg="white", relief="flat", padx=10, pady=6,
                   font=("Segoe UI", 9)).pack(side="right", padx=(8, 0))
         tk.Button(top, text="Historial", command=self._open_history,
-                  bg="#1B3055", fg="white", relief="flat", padx=10, pady=6,
+                  bg="#166B3A", fg="white", relief="flat", padx=10, pady=6,
                   font=("Segoe UI", 9)).pack(side="right", padx=(8, 0))
         tk.Button(top, text="Comprar créditos", command=self._open_buy_credits,
-                  bg="#B08D57", fg="white", relief="flat", padx=10, pady=6,
+                  bg="#1F8A4C", fg="white", relief="flat", padx=10, pady=6,
                   font=("Segoe UI", 9, "bold")).pack(side="right", padx=(8, 0))
 
         self.credits_label = tk.Label(top, text="Créditos: —",
                                        font=("Consolas", 12, "bold"),
-                                       fg="#C1272D", bg="#F6EFE2", padx=12, pady=6)
+                                       fg="#1F8A4C", bg="#FFFFFF", padx=12, pady=6,
+                                       relief="solid", bd=1)
         self.credits_label.pack(side="right")
 
         self.plan_label = tk.Label(top, text="Sin plan activo",
                                     font=("Segoe UI", 10, "bold"),
-                                    fg="#12213B", bg="#B08D57", padx=10, pady=6)
+                                    fg="#6B7280", bg="#F3F4F6", padx=10, pady=6)
         self.plan_label.pack(side="right", padx=(0, 8))
 
         # Aviso de privacidad
         tk.Label(self.main_frame,
                  text="100% local: los emails y resultados individuales nunca salen de esta "
                       "computadora. Solo se reporta un conteo agregado para descontar créditos.",
-                 font=("Segoe UI", 9, "italic"), fg="#B08D57", bg="#12213B",
+                 font=("Segoe UI", 9, "italic"), fg="#6B7280", bg="#FAFAFA",
                  wraplength=840, justify="left").pack(anchor="w", pady=(0, 8))
 
         # Estado puerto 25
-        port_frame = tk.Frame(self.main_frame, bg="#12213B")
+        port_frame = tk.Frame(self.main_frame, bg="#FAFAFA")
         port_frame.pack(fill="x", pady=(0, 10))
         self.port_status_label = tk.Label(port_frame, text="Puerto 25: sin probar",
                                            font=("Consolas", 10, "bold"),
-                                           fg="#B08D57", bg="#12213B")
+                                           fg="#6B7280", bg="#FAFAFA")
         self.port_status_label.pack(side="left")
         tk.Button(port_frame, text="Probar puerto 25", command=self._test_port25,
-                  bg="#1B3055", fg="white", relief="flat", padx=10, pady=4,
+                  bg="#166B3A", fg="white", relief="flat", padx=10, pady=4,
                   font=("Segoe UI", 9)).pack(side="left", padx=(12, 0))
 
         # Selector de archivo
-        file_frame = tk.Frame(self.main_frame, bg="#F6EFE2", padx=16, pady=12)
+        file_frame = tk.Frame(self.main_frame, bg="#FFFFFF", padx=16, pady=12,
+                               highlightbackground="#E5E7EB", highlightthickness=1)
         file_frame.pack(fill="x", pady=(0, 10))
         self.file_label = tk.Label(file_frame, text="Ningún archivo seleccionado",
-                                    font=("Consolas", 10), fg="#12213B", bg="#F6EFE2")
+                                    font=("Consolas", 10), fg="#16181D", bg="#FFFFFF")
         self.file_label.pack(side="left")
         tk.Button(file_frame, text="Elegir archivo (.csv / .xlsx)",
                   command=self._choose_file,
-                  bg="#12213B", fg="white", relief="flat",
+                  bg="#1F8A4C", fg="white", relief="flat",
                   padx=10, pady=6).pack(side="right")
 
         # Botones de acción
-        action_frame = tk.Frame(self.main_frame, bg="#12213B")
+        action_frame = tk.Frame(self.main_frame, bg="#FAFAFA")
         action_frame.pack(fill="x", pady=(0, 10))
         self.verify_btn = tk.Button(action_frame, text="Verificar (SMTP real)",
                                      command=self._start_verification, state="disabled",
-                                     bg="#C1272D", fg="white",
+                                     bg="#1F8A4C", fg="white",
                                      font=("Segoe UI", 11, "bold"),
                                      relief="flat", padx=14, pady=8)
         self.verify_btn.pack(side="left")
         self.export_btn = tk.Button(action_frame, text="Exportar CSV",
                                      command=self._export_csv, state="disabled",
-                                     bg="#B08D57", fg="white", relief="flat",
+                                     bg="#166B3A", fg="white", relief="flat",
                                      padx=14, pady=8)
         self.export_btn.pack(side="left", padx=(10, 0))
 
@@ -777,42 +779,43 @@ class App(tk.Tk):
         self.progress.pack(fill="x", pady=(0, 4))
 
         # Panel de estadísticas en vivo
-        stats_frame = tk.Frame(self.main_frame, bg="#1B3055", padx=12, pady=8)
+        stats_frame = tk.Frame(self.main_frame, bg="#FFFFFF", padx=12, pady=8,
+                                highlightbackground="#E5E7EB", highlightthickness=1)
         stats_frame.pack(fill="x", pady=(0, 6))
 
         # Fila 1: progreso + tiempo
-        row1 = tk.Frame(stats_frame, bg="#1B3055")
+        row1 = tk.Frame(stats_frame, bg="#FFFFFF")
         row1.pack(fill="x")
         self.lbl_progreso   = tk.Label(row1, text="—", font=("Consolas", 10, "bold"),
-                                        fg="#F6EFE2", bg="#1B3055")
+                                        fg="#16181D", bg="#FFFFFF")
         self.lbl_progreso.pack(side="left")
         self.lbl_velocidad  = tk.Label(row1, text="", font=("Consolas", 10),
-                                        fg="#B08D57", bg="#1B3055")
+                                        fg="#6B7280", bg="#FFFFFF")
         self.lbl_velocidad.pack(side="left", padx=(16, 0))
         self.lbl_tiempo     = tk.Label(row1, text="", font=("Consolas", 10),
-                                        fg="#B08D57", bg="#1B3055")
+                                        fg="#6B7280", bg="#FFFFFF")
         self.lbl_tiempo.pack(side="right")
         self.lbl_eta        = tk.Label(row1, text="", font=("Consolas", 10),
-                                        fg="#B08D57", bg="#1B3055")
+                                        fg="#6B7280", bg="#FFFFFF")
         self.lbl_eta.pack(side="right", padx=(0, 16))
 
         # Fila 2: contadores por estado
-        row2 = tk.Frame(stats_frame, bg="#1B3055")
+        row2 = tk.Frame(stats_frame, bg="#FFFFFF")
         row2.pack(fill="x", pady=(4, 0))
         self.lbl_counts = {}
         for status, color in [
-            ("Accepted", "#3B7A57"), ("Catch-All", "#1B7A8C"),
-            ("Rejected", "#C1272D"), ("No MX",     "#C1272D"),
-            ("SPAM Block","#8B3A8B"), ("Timeout",  "#B08D57"),
-            ("Greylisted","#B08D57"), ("MX Error", "#C1272D"),
+            ("Accepted", "#1F8A4C"), ("Catch-All", "#1B7A8C"),
+            ("Rejected", "#DC2626"), ("No MX",     "#DC2626"),
+            ("SPAM Block","#8B3A8B"), ("Timeout",  "#D97706"),
+            ("Greylisted","#D97706"), ("MX Error", "#DC2626"),
         ]:
             lbl = tk.Label(row2, text=f"{status}: 0",
-                           font=("Consolas", 9), fg=color, bg="#1B3055", padx=6)
+                           font=("Consolas", 9), fg=color, bg="#FFFFFF", padx=6)
             lbl.pack(side="left")
             self.lbl_counts[status] = lbl
 
         self.status_label = tk.Label(self.main_frame, text="",
-                                      font=("Consolas", 10), fg="#B08D57", bg="#12213B")
+                                      font=("Consolas", 10), fg="#6B7280", bg="#FAFAFA")
         self.status_label.pack(anchor="w", pady=(0, 4))
 
         # Tabla de resultados
@@ -840,15 +843,15 @@ class App(tk.Tk):
 
     def _refresh_plan(self, plan):
         if plan:
-            self.plan_label.config(text=f"Plan {plan.capitalize()}", bg="#3B7A57", fg="white")
+            self.plan_label.config(text=f"Plan {plan.capitalize()}", bg="#EAF6EE", fg="#166B3A")
         else:
-            self.plan_label.config(text="Sin plan activo", bg="#B08D57", fg="#12213B")
+            self.plan_label.config(text="Sin plan activo", bg="#F3F4F6", fg="#6B7280")
 
     def _logout(self):
         """Cierra sesión: borra el token guardado y regresa a la pantalla de login."""
         try:
-            keyring.delete_password("CorreoCertificado", "access_token")
-            keyring.delete_password("CorreoCertificado", "user_email")
+            keyring.delete_password("GreenEmailData", "access_token")
+            keyring.delete_password("GreenEmailData", "user_email")
         except Exception:
             pass
         self.user_email    = None
@@ -883,13 +886,13 @@ class App(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Historial de lotes")
         win.geometry("780x480")
-        win.configure(bg="#12213B")
+        win.configure(bg="#FAFAFA")
 
         nb = ttk.Notebook(win)
         nb.pack(fill="both", expand=True, padx=10, pady=10)
 
         # --- Pestaña: historial del servidor (solo conteos agregados) ---
-        server_tab = tk.Frame(nb, bg="#12213B")
+        server_tab = tk.Frame(nb, bg="#FAFAFA")
         nb.add(server_tab, text="Servidor (conteos)")
 
         cols = ("filename", "total", "fecha")
@@ -914,23 +917,23 @@ class App(tk.Tk):
                 ))
         except Exception as e:
             tk.Label(server_tab, text=f"No se pudo cargar el historial: {e}",
-                      fg="#C1272D", bg="#12213B").pack(pady=8)
+                      fg="#DC2626", bg="#FAFAFA").pack(pady=8)
 
         # --- Pestaña: historial local (detalle completo, descargable) ---
-        local_tab = tk.Frame(nb, bg="#12213B", padx=10, pady=10)
+        local_tab = tk.Frame(nb, bg="#FAFAFA", padx=10, pady=10)
         nb.add(local_tab, text="Este equipo (detalle completo)")
 
         tk.Label(
             local_tab,
             text="Estos archivos viven únicamente en esta computadora — "
                  "puedes abrirlos o copiarlos cuando quieras.",
-            fg="#B08D57", bg="#12213B", wraplength=700, justify="left",
+            fg="#6B7280", bg="#FAFAFA", wraplength=700, justify="left",
         ).pack(anchor="w", pady=(0, 8))
 
-        list_frame = tk.Frame(local_tab, bg="#12213B")
+        list_frame = tk.Frame(local_tab, bg="#FAFAFA")
         list_frame.pack(fill="both", expand=True)
 
-        local_list = tk.Listbox(list_frame, bg="#F6EFE2", font=("Consolas", 10))
+        local_list = tk.Listbox(list_frame, bg="#FFFFFF", font=("Consolas", 10))
         local_list.pack(side="left", fill="both", expand=True)
         vsb2 = ttk.Scrollbar(list_frame, orient="vertical", command=local_list.yview)
         local_list.configure(yscrollcommand=vsb2.set)
@@ -963,15 +966,15 @@ class App(tk.Tk):
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo abrir la carpeta: {e}")
 
-        btn_row = tk.Frame(local_tab, bg="#12213B")
+        btn_row = tk.Frame(local_tab, bg="#FAFAFA")
         btn_row.pack(fill="x", pady=(8, 0))
         tk.Button(btn_row, text="Abrir archivo seleccionado", command=_open_selected,
-                  bg="#1B3055", fg="white", relief="flat", padx=10, pady=6).pack(side="left")
+                  bg="#166B3A", fg="white", relief="flat", padx=10, pady=6).pack(side="left")
         tk.Button(btn_row, text="Abrir carpeta", command=_open_folder,
-                  bg="#1B3055", fg="white", relief="flat", padx=10, pady=6).pack(side="left", padx=(8, 0))
+                  bg="#166B3A", fg="white", relief="flat", padx=10, pady=6).pack(side="left", padx=(8, 0))
 
     def _test_port25(self):
-        self.port_status_label.config(text="Puerto 25: probando...", fg="#B08D57")
+        self.port_status_label.config(text="Puerto 25: probando...", fg="#6B7280")
         self.port25_open = None
 
         def worker():
@@ -990,10 +993,10 @@ class App(tk.Tk):
         self.port25_open = is_open
         if is_open:
             self.port_status_label.config(
-                text=f"Puerto 25: abierto ✅ (respondió {info})", fg="#3B7A57")
+                text=f"Puerto 25: abierto ✅ (respondió {info})", fg="#1F8A4C")
         else:
             self.port_status_label.config(
-                text=f"Puerto 25: bloqueado ❌ — {info}", fg="#C1272D")
+                text=f"Puerto 25: bloqueado ❌ — {info}", fg="#DC2626")
 
     # ── Selección de archivo ───────────────────────────────────────────────
 
