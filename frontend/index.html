@@ -652,7 +652,19 @@ $('loginBtn').onclick = async () => {
   if (!password){ showError('Ingresa tu contraseña'); return; }
   clearError();
   $('loginBtn').disabled = true;
+
+  let secs = 0;
   $('loginBtn').textContent = 'Conectando…';
+  const loginTimer = setInterval(() => {
+    secs++;
+    $('loginBtn').textContent = `Conectando… (${secs}s)`;
+    if (secs === 5){
+      $('errorBox').innerHTML = `<div class="error-box" style="background:var(--green-light);color:var(--green-dark);">
+        El servidor puede tardar hasta 30-40 segundos en responder si estaba inactivo. Por favor espera…
+      </div>`;
+    }
+  }, 1000);
+
   try {
     const body = new URLSearchParams();
     body.append('email', email); body.append('password', password);
@@ -667,6 +679,7 @@ $('loginBtn').onclick = async () => {
   } catch(e){
     showError(e.message);
   } finally {
+    clearInterval(loginTimer);
     $('loginBtn').disabled = false;
     $('loginBtn').textContent = 'Iniciar sesión';
   }
