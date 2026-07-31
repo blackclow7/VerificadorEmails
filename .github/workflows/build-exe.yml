@@ -8,6 +8,7 @@ on:
       - "desktop/verifier_app.py"
       - "desktop/desktop_index.html"
       - "desktop/installer.iss"
+      - "desktop/icon.ico"
       - ".github/workflows/build-exe.yml"
 
 jobs:
@@ -29,7 +30,7 @@ jobs:
       - name: Compilar el .exe con PyInstaller
         working-directory: desktop
         run: |
-          pyinstaller --onefile --windowed --name VerificadorEmails --add-data "desktop_index.html;." --collect-all pywebview --collect-all clr_loader --collect-all pythonnet verifier_app.py
+          pyinstaller --onefile --windowed --name VerificadorEmails --icon=icon.ico --add-data "desktop_index.html;." --collect-all pywebview --collect-all clr_loader --collect-all pythonnet verifier_app.py
 
       - name: Instalar Inno Setup
         run: |
