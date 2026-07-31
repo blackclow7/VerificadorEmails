@@ -10,10 +10,13 @@ import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
+from datetime import datetime, timezone
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import openpyxl
+import stripe
 
 from verifier import verify_email
 from supabase import create_client, Client
@@ -30,6 +33,62 @@ MAX_EMAILS_PER_JOB  = int(os.getenv("MAX_EMAILS_PER_JOB", "300"))
 WORKERS             = int(os.getenv("VERIFY_WORKERS", "20"))
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
+# ---------------------------------------------------------------------------
+# Stripe — planes de suscripción y paquetes de créditos sueltos
+# ---------------------------------------------------------------------------
+
+stripe.api_key       = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+
+# Créditos que otorga cada plan por cada ciclo de facturación (mensual o anual)
+PLAN_CREDITS = {
+    "esencial":   1500,
+    "starter":    2800,
+    "pro":        5000,
+    "growth":     12000,
+    "business":   22000,
+    "enterprise": 75000,
+}
+
+# Créditos que otorga cada paquete de pago único (sin suscripción)
+PACK_CREDITS = {
+    "chico":   100,
+    "mediano": 500,
+    "grande":  2000,
+}
+
+
+def get_price_id(plan: str = None, interval: str = None, pack: str = None) -> str:
+    """Busca el Price ID real de Stripe en variables de entorno.
+    Nunca se hardcodean IDs de Stripe en el código: viven en el dashboard
+    de Render, así se pueden actualizar sin tocar código."""
+    if pack:
+        env_name = f"STRIPE_PRICE_PACK_{pack.upper()}"
+    else:
+        env_name = f"STRIPE_PRICE_{plan.upper()}_{interval.upper()}"
+    price_id = os.getenv(env_name)
+    if not price_id:
+        raise HTTPException(500, f"Precio no configurado en el servidor: {env_name}")
+    return price_id
+
+
+def ensure_stripe_customer(user: dict) -> str:
+    """Devuelve el stripe_customer_id del usuario, creándolo en Stripe la
+    primera vez que lo necesite."""
+    if user.get("stripe_customer_id"):
+        return user["stripe_customer_id"]
+    customer = stripe.Customer.create(email=user["email"])
+    db().table("users").update({"stripe_customer_id": customer.id}).eq("email", user["email"]).execute()
+    return customer.id
+
+
+def add_credits_to_email(user_email: str, amount: int):
+    res = db().table("users").select("credits").eq("email", user_email).execute()
+    if not res.data:
+        return
+    new_balance = res.data[0]["credits"] + amount
+    db().table("users").update({"credits": new_balance}).eq("email", user_email).execute()
 
 app = FastAPI(title="Email Verifier SaaS - API")
 
@@ -186,19 +245,128 @@ def get_me(authorization: str = Header(None)):
     return user
 
 
-@app.post("/api/credits/add")
-def add_credits(
-    amount: int = Form(...),
-    authorization: str = Header(None)
+@app.post("/api/billing/checkout")
+def create_checkout(
+    plan:          str = Form(None),
+    interval:      str = Form(None),
+    pack:          str = Form(None),
+    authorization: str = Header(None),
 ):
     """
-    PLACEHOLDER de compra — en Fase 2 esto lo llama el webhook de Stripe.
-    Por ahora solo para pruebas internas.
+    Crea una sesión de Stripe Checkout.
+    - Para suscripción: mandar plan (esencial/starter/pro/growth/business/enterprise)
+      + interval (monthly/annual)
+    - Para créditos sueltos: mandar pack (chico/mediano/grande)
+    Devuelve la URL a la que el frontend debe redirigir al usuario.
     """
     user = get_user_from_token(authorization)
-    new_balance = user["credits"] + amount
-    db().table("users").update({"credits": new_balance}).eq("email", user["email"]).execute()
-    return {"email": user["email"], "credits": new_balance}
+
+    if pack:
+        if pack not in PACK_CREDITS:
+            raise HTTPException(400, "Paquete de créditos inválido")
+        price_id = get_price_id(pack=pack)
+        mode = "payment"
+        metadata = {"user_email": user["email"], "pack": pack}
+        subscription_data = None
+    elif plan:
+        if plan not in PLAN_CREDITS or interval not in ("monthly", "annual"):
+            raise HTTPException(400, "Plan o periodicidad inválidos")
+        price_id = get_price_id(plan=plan, interval=interval)
+        mode = "subscription"
+        metadata = {"user_email": user["email"], "plan": plan}
+        subscription_data = {"metadata": {"user_email": user["email"], "plan": plan}}
+    else:
+        raise HTTPException(400, "Debes indicar un plan (con interval) o un pack")
+
+    customer_id = ensure_stripe_customer(user)
+
+    session_args = dict(
+        mode=mode,
+        customer=customer_id,
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=f"{FRONTEND_ORIGIN}/?checkout=success",
+        cancel_url=f"{FRONTEND_ORIGIN}/?checkout=cancel",
+        metadata=metadata,
+    )
+    if subscription_data:
+        session_args["subscription_data"] = subscription_data
+
+    session = stripe.checkout.Session.create(**session_args)
+    return {"checkout_url": session.url}
+
+
+@app.post("/api/billing/portal")
+def billing_portal(authorization: str = Header(None)):
+    """Sesión del Customer Portal de Stripe: permite al usuario ver facturas,
+    cambiar de plan o cancelar su suscripción sin que tengamos que construir
+    esa UI nosotros."""
+    user = get_user_from_token(authorization)
+    if not user.get("stripe_customer_id"):
+        raise HTTPException(400, "Aún no tienes una suscripción o compra registrada")
+    session = stripe.billing_portal.Session.create(
+        customer=user["stripe_customer_id"],
+        return_url=FRONTEND_ORIGIN,
+    )
+    return {"portal_url": session.url}
+
+
+@app.post("/api/billing/webhook")
+async def stripe_webhook(request: Request):
+    """
+    Endpoint que Stripe llama directamente (no lo llama el frontend).
+    NO lleva JWT — se autentica verificando la firma con STRIPE_WEBHOOK_SECRET.
+    """
+    payload    = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except Exception as e:
+        raise HTTPException(400, f"Firma de webhook inválida: {e}")
+
+    # Idempotencia: Stripe puede reintentar el mismo evento varias veces.
+    event_id = event["id"]
+    already  = db().table("billing_events").select("id").eq("id", event_id).execute()
+    if already.data:
+        return {"received": True}
+    db().table("billing_events").insert({"id": event_id}).execute()
+
+    etype = event["type"]
+    obj   = event["data"]["object"]
+
+    if etype == "checkout.session.completed" and obj.get("mode") == "payment":
+        # Compra de créditos sueltos (pago único)
+        meta       = obj.get("metadata") or {}
+        pack       = meta.get("pack")
+        user_email = meta.get("user_email")
+        if pack in PACK_CREDITS and user_email:
+            add_credits_to_email(user_email, PACK_CREDITS[pack])
+
+    elif etype == "invoice.paid":
+        # Cubre tanto el primer cobro de una suscripción como cada renovación
+        sub_id = obj.get("subscription")
+        if sub_id:
+            sub        = stripe.Subscription.retrieve(sub_id)
+            meta       = sub.get("metadata") or {}
+            plan       = meta.get("plan")
+            user_email = meta.get("user_email")
+            if plan in PLAN_CREDITS and user_email:
+                add_credits_to_email(user_email, PLAN_CREDITS[plan])
+                period_end = datetime.fromtimestamp(
+                    sub["current_period_end"], tz=timezone.utc
+                ).isoformat()
+                db().table("users").update({
+                    "plan":            plan,
+                    "plan_status":     "active",
+                    "plan_period_end": period_end,
+                }).eq("email", user_email).execute()
+
+    elif etype == "customer.subscription.deleted":
+        meta       = obj.get("metadata") or {}
+        user_email = meta.get("user_email")
+        if user_email:
+            db().table("users").update({"plan_status": "canceled"}).eq("email", user_email).execute()
+
+    return {"received": True}
 
 
 # ---------------------------------------------------------------------------
