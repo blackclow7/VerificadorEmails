@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "desktop/verifier_app.py"
+      - "desktop/desktop_index.html"
       - "desktop/installer.iss"
       - ".github/workflows/build-exe.yml"
 
@@ -23,12 +24,12 @@ jobs:
 
       - name: Instalar dependencias Python
         run: |
-          pip install requests openpyxl keyring pyinstaller
+          pip install requests openpyxl keyring pywebview pythonnet pywin32 pyinstaller
 
       - name: Compilar el .exe con PyInstaller
         working-directory: desktop
         run: |
-          pyinstaller --onefile --windowed --name VerificadorEmails verifier_app.py
+          pyinstaller --onefile --windowed --name VerificadorEmails --add-data "desktop_index.html;." verifier_app.py
 
       - name: Instalar Inno Setup
         run: |
