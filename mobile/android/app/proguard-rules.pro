@@ -1,21 +1,27 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ── Green Email Verifier — ProGuard rules ──────────────────────────────────
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# dnsjava: mantener todas las clases públicas para que la resolución MX funcione
+-keep class org.xbill.DNS.** { *; }
+-dontwarn org.xbill.DNS.**
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Capacitor: mantener los plugins y sus anotaciones
+-keep class com.getcapacitor.** { *; }
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    @com.getcapacitor.annotation.CapacitorPlugin *;
+    @com.getcapacitor.PluginMethod *;
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# SmtpVerifierPlugin y Port25Plugin — no ofuscar nombres (Capacitor los busca por nombre)
+-keep class com.greenemailverifier.app.SmtpVerifierPlugin { *; }
+-keep class com.greenemailverifier.app.Port25Plugin { *; }
+-keep class com.greenemailverifier.app.MainActivity { *; }
+
+# Kotlin stdlib
+-dontwarn kotlin.**
+-keep class kotlin.** { *; }
+-keep class kotlin.Metadata { *; }
+
+# JSObject de Capacitor (serialización JSON nativa)
+-keepclassmembers class * {
+    @com.getcapacitor.annotation.* <methods>;
+}
