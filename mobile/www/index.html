@@ -119,10 +119,16 @@ body{
   <p id="conclusionText"></p>
 </div>
 
-<script type="module">
-import { registerPlugin } from 'https://cdn.jsdelivr.net/npm/@capacitor/core@6/dist/capacitor.js';
-
-const Port25 = registerPlugin('Port25');
+<script>
+function getPort25(){
+  if (window.Capacitor && window.Capacitor.registerPlugin){
+    return window.Capacitor.registerPlugin('Port25');
+  }
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Port25){
+    return window.Capacitor.Plugins.Port25;
+  }
+  return null;
+}
 
 let timerInterval = null;
 let testRunning = false;
@@ -138,6 +144,16 @@ function detectNetwork(){
 window.runTest = async function(){
   if (testRunning) return;
   testRunning = true;
+
+  const Port25 = getPort25();
+  if (!Port25){
+    testRunning = false;
+    document.getElementById('statusBox').className = 'status-box fail';
+    document.getElementById('statusIcon').textContent = '❌';
+    document.getElementById('statusTitle').textContent = 'Puente nativo no disponible';
+    document.getElementById('statusDetail').textContent = 'No se pudo acceder al plugin Port25. Reinicia la app e intenta de nuevo.';
+    return;
+  }
 
   document.getElementById('testBtn').disabled = true;
   document.getElementById('testBtn').textContent = 'Probando…';
