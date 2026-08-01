@@ -31,7 +31,7 @@ jobs:
 
       - name: Instalar dependencias de Capacitor
         working-directory: mobile
-        run: npm install
+        run: npm install && npm install -D typescript
 
       - name: Sincronizar Capacitor con el proyecto Android
         working-directory: mobile
