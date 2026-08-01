@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Green Email Verifier — Prueba de Red</title>
+<style>
+:root{ --green:#1F8A4C; --green-dark:#166B3A; --green-light:#EAF6EE; --red:#DC2626; }
+*{ box-sizing:border-box; margin:0; padding:0; }
+body{
+  font-family:'Segoe UI', system-ui, sans-serif;
+  background:#FAFAFA; color:#16181D; min-height:100vh;
+  display:flex; flex-direction:column; align-items:center;
+}
+.header{
+  background:var(--green-dark); color:#fff; width:100%;
+  padding:20px 24px; display:flex; align-items:center; gap:14px;
+}
+.header img{ width:38px; height:38px; }
+.header h1{ font-size:18px; font-weight:700; }
+.header p{ font-size:12px; opacity:.8; margin-top:2px; }
+
+.card{
+  background:#fff; border:1px solid #E5E7EB; border-radius:14px;
+  padding:24px; margin:24px; width:calc(100% - 48px); max-width:480px;
+}
+.card h2{ font-size:16px; font-weight:700; margin-bottom:6px; }
+.card p{ font-size:13.5px; color:#6B7280; line-height:1.5; margin-bottom:16px; }
+
+.status-box{
+  border-radius:10px; padding:16px; margin-bottom:16px;
+  display:flex; align-items:flex-start; gap:12px;
+}
+.status-box.idle{ background:#F3F4F6; }
+.status-box.testing{ background:#EAF6EE; }
+.status-box.ok{ background:#EAF6EE; }
+.status-box.fail{ background:#FDECEC; }
+.status-icon{ font-size:26px; flex-shrink:0; margin-top:2px; }
+.status-title{ font-weight:700; font-size:15px; }
+.status-detail{ font-size:12.5px; color:#6B7280; margin-top:4px; line-height:1.4; }
+
+.progress{ height:6px; background:#E5E7EB; border-radius:3px; overflow:hidden; margin-bottom:16px; }
+.progress-fill{ height:100%; width:0%; background:var(--green); border-radius:3px; transition:width 6s linear; }
+
+.btn{
+  width:100%; padding:14px; border:none; border-radius:10px; font-size:15px;
+  font-weight:700; cursor:pointer; font-family:inherit;
+  background:var(--green); color:#fff; transition:background .15s;
+}
+.btn:hover{ background:var(--green-dark); }
+.btn:disabled{ opacity:.5; cursor:not-allowed; }
+.btn.secondary{ background:#fff; color:var(--green); border:1.5px solid var(--green); margin-top:10px; }
+
+.info-box{
+  background:var(--green-light); border-radius:10px; padding:14px; margin-top:16px;
+  font-size:12.5px; color:var(--green-dark); line-height:1.5;
+}
+.info-box b{ font-weight:700; }
+.timer{ font-size:12px; color:#6B7280; text-align:center; margin-top:8px; }
+
+.result-full{ margin-top:16px; border-top:1px solid #E5E7EB; padding-top:16px; }
+.result-row{ display:flex; justify-content:space-between; font-size:13px; padding:6px 0; border-bottom:1px solid #F3F4F6; }
+.result-row:last-child{ border-bottom:none; }
+.result-label{ color:#6B7280; }
+.result-value{ font-weight:600; }
+.badge{ font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; }
+.badge.ok{ background:var(--green-light); color:var(--green-dark); }
+.badge.fail{ background:#FDECEC; color:var(--red); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Green Email Verifier</h1>
+    <p>Prueba de acceso al puerto 25 (SMTP)</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>¿Tu red permite verificación SMTP real?</h2>
+  <p>Esta prueba comprueba si el puerto 25 está abierto en tu red actual (datos móviles o WiFi), lo cual es necesario para verificar correos a nivel de buzón real.</p>
+
+  <div class="status-box idle" id="statusBox">
+    <div class="status-icon" id="statusIcon">📡</div>
+    <div>
+      <div class="status-title" id="statusTitle">Listo para probar</div>
+      <div class="status-detail" id="statusDetail">Presiona el botón para iniciar la prueba de conexión</div>
+    </div>
+  </div>
+
+  <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="timer" id="timerLabel"></div>
+
+  <button class="btn" id="testBtn" onclick="runTest()">Probar ahora</button>
+
+  <div id="resultFull" class="result-full" style="display:none;">
+    <div class="result-row">
+      <span class="result-label">Red actual</span>
+      <span class="result-value" id="rNetwork">—</span>
+    </div>
+    <div class="result-row">
+      <span class="result-label">Puerto 25</span>
+      <span id="rPort"></span>
+    </div>
+    <div class="result-row">
+      <span class="result-label">Servidor que respondió</span>
+      <span class="result-value" id="rServer">—</span>
+    </div>
+    <div class="result-row">
+      <span class="result-label">Tiempo de respuesta</span>
+      <span class="result-value" id="rTime">—</span>
+    </div>
+  </div>
+</div>
+
+<div class="card" id="conclusionCard" style="display:none;">
+  <h2 id="conclusionTitle"></h2>
+  <p id="conclusionText"></p>
+</div>
+
+<script type="module">
+import { registerPlugin } from 'https://cdn.jsdelivr.net/npm/@capacitor/core@6/dist/capacitor.js';
+
+const Port25 = registerPlugin('Port25');
+
+let timerInterval = null;
+let testRunning = false;
+
+function detectNetwork(){
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!conn) return 'Desconocida';
+  const type = conn.type || conn.effectiveType || 'desconocida';
+  const typeMap = { 'wifi':'WiFi', 'cellular':'Datos móviles', '4g':'4G', '3g':'3G', '2g':'2G', 'ethernet':'Ethernet' };
+  return typeMap[type] || type;
+}
+
+window.runTest = async function(){
+  if (testRunning) return;
+  testRunning = true;
+
+  document.getElementById('testBtn').disabled = true;
+  document.getElementById('testBtn').textContent = 'Probando…';
+  document.getElementById('resultFull').style.display = 'none';
+  document.getElementById('conclusionCard').style.display = 'none';
+
+  const box = document.getElementById('statusBox');
+  box.className = 'status-box testing';
+  document.getElementById('statusIcon').textContent = '⏳';
+  document.getElementById('statusTitle').textContent = 'Validando puerto 25…';
+  document.getElementById('statusDetail').textContent = 'Conectando a servidores SMTP de prueba…';
+
+  // Barra de progreso animada
+  const fill = document.getElementById('progressFill');
+  fill.style.transition = 'none'; fill.style.width = '0%';
+  void fill.offsetWidth;
+  fill.style.transition = 'width 6s linear'; fill.style.width = '100%';
+
+  // Contador de segundos
+  let secs = 0;
+  document.getElementById('timerLabel').textContent = `Tiempo transcurrido: ${secs}s`;
+  timerInterval = setInterval(() => {
+    secs++;
+    document.getElementById('timerLabel').textContent = `Tiempo transcurrido: ${secs}s`;
+  }, 1000);
+
+  const startTime = Date.now();
+  const network = detectNetwork();
+  document.getElementById('rNetwork').textContent = network;
+
+  try {
+    const result = await Port25.check();
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    clearInterval(timerInterval);
+    fill.style.transition = 'width .2s'; fill.style.width = '100%';
+    fill.style.background = result.open ? 'var(--green)' : 'var(--red)';
+    document.getElementById('timerLabel').textContent = `Tiempo total: ${elapsed}s`;
+
+    if (result.open){
+      box.className = 'status-box ok';
+      document.getElementById('statusIcon').textContent = '✅';
+      document.getElementById('statusTitle').textContent = 'Puerto disponible';
+      document.getElementById('statusDetail').textContent = `El puerto 25 está abierto en tu red actual.`;
+      document.getElementById('rPort').innerHTML = '<span class="badge ok">Disponible</span>';
+      document.getElementById('rServer').textContent = result.info;
+      document.getElementById('rTime').textContent = `${elapsed}s`;
+      document.getElementById('conclusionCard').style.display = 'block';
+      document.getElementById('conclusionTitle').textContent = '✅ La verificación SMTP real es posible en esta red';
+      document.getElementById('conclusionText').textContent = `El puerto 25 está abierto. Esto significa que ${network === 'Datos móviles' ? 'tus datos móviles' : 'esta red'} permiten hacer verificación real de buzones de correo (Accepted/Rejected), no solo la verificación ligera por DNS.`;
+    } else {
+      box.className = 'status-box fail';
+      document.getElementById('statusIcon').textContent = '❌';
+      document.getElementById('statusTitle').textContent = 'Puerto no disponible';
+      document.getElementById('statusDetail').textContent = result.info;
+      document.getElementById('rPort').innerHTML = '<span class="badge fail">Bloqueado</span>';
+      document.getElementById('rServer').textContent = '—';
+      document.getElementById('rTime').textContent = `${elapsed}s`;
+      document.getElementById('conclusionCard').style.display = 'block';
+      document.getElementById('conclusionTitle').textContent = '⚠️ Solo verificación ligera disponible en esta red';
+      document.getElementById('conclusionText').textContent = 'El puerto 25 está bloqueado en esta red. Solo se puede hacer verificación por DNS (MX + toxicidad), no verificación real de buzón. Esto es independiente del dispositivo — es una restricción de la red/operadora.';
+    }
+
+    document.getElementById('resultFull').style.display = 'block';
+    document.getElementById('testBtn').textContent = 'Probar de nuevo';
+  } catch(e){
+    clearInterval(timerInterval);
+    box.className = 'status-box fail';
+    document.getElementById('statusIcon').textContent = '❌';
+    document.getElementById('statusTitle').textContent = 'Error al probar';
+    document.getElementById('statusDetail').textContent = e.message || 'Error desconocido';
+    document.getElementById('timerLabel').textContent = '';
+    document.getElementById('testBtn').textContent = 'Reintentar';
+  }
+
+  document.getElementById('testBtn').disabled = false;
+  testRunning = false;
+};
+</script>
+</body>
+</html>
