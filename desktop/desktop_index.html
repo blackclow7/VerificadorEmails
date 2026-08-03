@@ -451,6 +451,7 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
             <div class="row-flex" style="margin-bottom:6px;">
               <span id="vTimingElapsed" style="font-size:13px;color:var(--ink-2);">Tiempo transcurrido: 0s</span>
               <span id="vTimingEta" style="font-size:13px;color:var(--ink-2);">Tiempo estimado restante: —</span>
+              <button class="btn-outline" id="stopVerifyBtn" style="border-color:var(--red);color:var(--red);">⏸ Detener</button>
             </div>
             <div class="donut-wrap">
               <div class="donut-center">
@@ -494,7 +495,7 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
           <input type="text" class="search-input" id="listasSearch" placeholder="Buscar archivo…" style="margin-bottom:0;">
         </div>
         <table>
-          <thead><tr><th>Archivo</th><th>Correos</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Archivo</th><th>Correos</th><th>Rebote</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="listasBody"></tbody>
         </table>
         <div id="listasEmpty" class="empty-state hidden">Aún no hay lotes procesados.</div>
@@ -1017,6 +1018,13 @@ async function chooseFile(){
   } catch(e){ $('errorBoxVerify').innerHTML = `<div class="error-box">${e.message}</div>`; }
 }
 
+$('stopVerifyBtn').onclick = async () => {
+  $('stopVerifyBtn').disabled = true;
+  $('stopVerifyBtn').textContent = 'Deteniendo…';
+  try { await pyApi().cancel_verification(); }
+  catch(e){}
+};
+
 function selectFile(path){
   selectedFilePath = path;
   selectedFileEmailCount = null;
@@ -1069,26 +1077,17 @@ async function runQuickEstimate(){
 function renderQuickEstimate(data){
   const pct = Math.round(data.estimated_bounce_rate * 100);
   const color = pct < 5 ? 'var(--green)' : pct < 20 ? 'var(--amber)' : 'var(--red)';
-  const topDomains = data.domains.slice(0, 8).map(d => {
-    const dPct = Math.round(d.estimated_bounce_rate * 100);
-    const riskColor = d.risk==='bajo'?'var(--green)':d.risk==='medio'?'var(--amber)':'var(--red)';
-    return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bg);">' +
-      '<span>' + d.domain + ' (' + d.count + ')</span>' +
-      '<span style="color:' + riskColor + ';font-weight:700;">~' + dPct + '%</span></div>';
-  }).join('');
   $('quickEstimateBody').innerHTML =
     '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">' +
       '<span style="font-size:28px;font-weight:800;color:' + color + ';">~' + pct + '%</span>' +
-      '<span>bounce estimado (' + data.estimated_bounces + ' de ' + data.total_emails + ')</span></div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px;font-size:12px;">' +
+      '<span>rebote estimado</span></div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:6px;font-size:12px;">' +
       '<span>📧 ' + data.total_emails + ' emails</span>' +
       '<span>🌐 ' + data.unique_domains + ' dominios</span>' +
       (data.no_mx>0?'<span style="color:var(--red);">🚫 ' + data.no_mx + ' sin MX</span>':'') +
       (data.disposable>0?'<span style="color:var(--red);">🗑️ ' + data.disposable + ' desechables</span>':'') +
       (data.typo_domain>0?'<span style="color:var(--amber);">✏️ ' + data.typo_domain + ' con typo</span>':'') +
     '</div>' +
-    '<div style="font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:4px;">Top dominios</div>' +
-    topDomains +
     '<div style="font-size:11px;color:var(--ink-2);margin-top:8px;">Este estimado es gratis y no consume creditos. Para resultados exactos, verifica de verdad.</div>';
 }
 $('viewEstimateBtn').onclick = runQuickEstimate;
@@ -1268,6 +1267,8 @@ $('verifyBtn').onclick = async () => {
   $('errorBoxVerify').innerHTML = '';
   $('verifyBtn').disabled = true;
   $('verifyBtn').textContent = 'Verificando (SMTP real)…';
+  $('stopVerifyBtn').disabled = false;
+  $('stopVerifyBtn').textContent = '⏸ Detener';
   $('vProgressWrap').classList.remove('hidden');
   $('detailCard').classList.remove('hidden');
   $('viewDetailBtn').textContent = 'Ocultar detalle';
@@ -1389,6 +1390,24 @@ function findLocalFileForJob(job, localFiles){
   return (best && bestDiff < 600) ? best : null; // tolerancia de 10 min
 }
 
+// Calcula el % de rebote de un lote a partir de status_counts que ya
+// devuelve el backend (Rejected, No MX, SPAM Block cuentan como rebote;
+// "Formato inválido" no cuenta porque ni siquiera se verificó/cobró).
+function computeBounceRate(job){
+  const sc = job.status_counts || {};
+  const bounced = (sc['Rejected']||0) + (sc['No MX']||0) + (sc['SPAM Block']||0);
+  const total = job.total_emails || 0;
+  if (!total) return null;
+  return bounced / total;
+}
+function bounceBadgeHtml(job){
+  const rate = computeBounceRate(job);
+  if (rate === null) return '<span style="color:var(--ink-2);font-size:12px;">—</span>';
+  const pct = Math.round(rate * 100);
+  const color = pct < 5 ? 'var(--green)' : pct < 20 ? 'var(--amber)' : 'var(--red)';
+  return '<span style="color:' + color + ';font-weight:700;">' + pct + '%</span>';
+}
+
 async function loadListas(){
   if (!currentToken) return;
   try {
@@ -1411,6 +1430,7 @@ async function loadListas(){
       return `<tr>
         <td>${j.filename}</td>
         <td>${j.total_emails.toLocaleString()}</td>
+        <td>${bounceBadgeHtml(j)}</td>
         <td>${new Date(j.created_at).toLocaleString()}</td>
         <td><span class="badge-ok">✓ Completado</span></td>
         <td>${accion}</td>

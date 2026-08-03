@@ -375,6 +375,7 @@ def extract_emails_from_file(path):
 class Api:
     def __init__(self):
         self.window = None  # se asigna después de crear la ventana
+        self.cancel_requested = False  # bandera para detener verify_batch en curso
 
     # ── Puerto 25 ────────────────────────────────────────────────────────
     def check_port25(self, context="default"):
@@ -429,6 +430,16 @@ class Api:
         except Exception as e:
             return {"total": 0, "emails": [], "error": str(e)}
 
+    def cancel_verification(self):
+        """
+        Llamado desde el botón 'Detener' del HTML. No detiene instantáneamente
+        (los hilos ya en vuelo terminan su verificación actual), pero hace que
+        el worker deje de esperar más resultados y entregue lo que ya se
+        verificó hasta ese momento, en vez de descartarlo.
+        """
+        self.cancel_requested = True
+        return {"ok": True}
+
     def verify_batch(self, file_path):
         """
         Tampoco bloquea: arranca la verificación completa en un hilo aparte
@@ -437,6 +448,8 @@ class Api:
         emails podía tardar minutos — bloquear la interfaz ese tiempo sería
         inaceptable.
         """
+        self.cancel_requested = False
+
         def worker():
             emails = extract_emails_from_file(file_path)
             total  = len(emails)
@@ -454,6 +467,13 @@ class Api:
                 futures = {pool.submit(verify_email_local, e): e for e in emails}
                 done = 0
                 for future in as_completed(futures):
+                    if self.cancel_requested:
+                        # Cancela lo que aún no arrancó; lo ya en vuelo se
+                        # deja terminar solo (ThreadPoolExecutor no permite
+                        # interrumpir hilos ya corriendo en Python).
+                        for f in futures:
+                            f.cancel()
+                        break
                     r = future.result()
                     results.append(r)
                     done += 1

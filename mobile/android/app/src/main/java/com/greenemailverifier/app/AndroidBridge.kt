@@ -153,8 +153,20 @@ class AndroidBridge(private val activity: Activity, private val webView: WebView
     // Progreso vía window.onVerifyProgress({done,total,result})
     // Final vía window.onVerifyComplete([...])
     // =========================================================================
+    // Bandera para detener una verificación en curso (botón "Detener" en el JS).
+    // Se revisa en cada iteración del loop de verifyBatch — al detectarla,
+    // se cancelan las tareas pendientes y se entrega lo ya verificado hasta
+    // ese momento, en vez de descartarlo.
+    @Volatile private var cancelRequested = false
+
+    @JavascriptInterface
+    fun cancelVerification() {
+        cancelRequested = true
+    }
+
     @JavascriptInterface
     fun verifyBatch(emailsJson: String) {
+        cancelRequested = false
         executor.submit {
             try {
                 val arr = JSONArray(emailsJson)
@@ -168,6 +180,13 @@ class AndroidBridge(private val activity: Activity, private val webView: WebView
                 val results = mutableListOf<JSONObject>()
                 var done = 0
                 for (f in futures) {
+                    if (cancelRequested) {
+                        // Cancela las tareas que aún no han arrancado o no
+                        // han terminado; las que ya estaban corriendo se
+                        // interrumpen también (true = permite interrupt()).
+                        futures.forEach { it.cancel(true) }
+                        break
+                    }
                     val result = try { f.get() } catch (e: Exception) {
                         JSONObject().put("email","?").put("status","MX Error")
                             .put("detalle", e.message ?: "error").put("toxicidad", 0)

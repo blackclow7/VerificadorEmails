@@ -308,7 +308,10 @@ tr:last-child td{ border-bottom:none; }
       <button class="btn" id="verifyBtn" style="margin-bottom:14px;">Verificar (SMTP real)</button>
 
       <div id="vProgressWrap" class="card hidden">
-        <div class="section-label">Progreso en tiempo real</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="section-label">Progreso en tiempo real</div>
+          <button class="btn-sm" id="stopVerifyBtn" style="border-color:var(--red);color:var(--red);">⏸ Detener</button>
+        </div>
         <div id="vTimingElapsed" style="font-size:12px;color:var(--ink-2);">—</div>
         <div id="vTimingEta" style="font-size:12px;color:var(--ink-2);margin-bottom:10px;">—</div>
         <div class="donut-wrap">
@@ -977,28 +980,18 @@ async function runQuickEstimate(){
 function renderQuickEstimate(data){
   const pct = Math.round(data.estimated_bounce_rate * 100);
   const color = pct < 5 ? 'var(--green)' : pct < 20 ? 'var(--amber)' : 'var(--red)';
-  const topDomains = data.domains.slice(0, 5).map(d => {
-    const dPct = Math.round(d.estimated_bounce_rate * 100);
-    const riskColor = d.risk==='bajo'?'var(--green)':d.risk==='medio'?'var(--amber)':'var(--red)';
-    return `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bg);">
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;">${d.domain} (${d.count})</span>
-      <span style="color:${riskColor};font-weight:700;">~${dPct}%</span>
-    </div>`;
-  }).join('');
   $('quickEstimateBody').innerHTML = `
     <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
       <span style="font-size:28px;font-weight:800;color:${color};">~${pct}%</span>
-      <span>bounce estimado (${data.estimated_bounces} de ${data.total_emails})</span>
+      <span>rebote estimado</span>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;font-size:12px;">
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px;font-size:12px;">
       <span>📧 ${data.total_emails} emails</span>
       <span>🌐 ${data.unique_domains} dominios</span>
       ${data.no_mx>0?`<span style="color:var(--red);">🚫 ${data.no_mx} sin MX</span>`:''}
       ${data.disposable>0?`<span style="color:var(--red);">🗑️ ${data.disposable} desechables</span>`:''}
       ${data.typo_domain>0?`<span style="color:var(--amber);">✏️ ${data.typo_domain} con typo</span>`:''}
     </div>
-    <div style="font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:4px;">Top dominios</div>
-    ${topDomains}
     <div style="font-size:11px;color:var(--ink-2);margin-top:8px;">
       Este estimado es gratis y no consume créditos. Para resultados exactos, verifica de verdad.
     </div>`;
@@ -1079,6 +1072,7 @@ $('verifyBtn').onclick=async()=>{
 
 function startVerifyUI(total){
   $('verifyBtn').disabled=true; $('verifyBtn').textContent='Verificando…';
+  $('stopVerifyBtn').disabled=false; $('stopVerifyBtn').textContent='⏸ Detener';
   $('errorBoxVerify').innerHTML='';
   $('vProgressWrap').classList.remove('hidden'); $('detailCard').classList.remove('hidden');
   $('resultsBody').innerHTML=''; Object.keys(liveCounts).forEach(k=>delete liveCounts[k]);
@@ -1088,6 +1082,15 @@ function startVerifyUI(total){
   if (verifyTimerID)clearInterval(verifyTimerID);
   verifyTimerID=setInterval(()=>updateTiming(Object.values(liveCounts).reduce((a,b)=>a+b,0),verifyTotal||1),1000);
 }
+
+$('stopVerifyBtn').onclick = () => {
+  if (window.AndroidBridge && window.AndroidBridge.cancelVerification){
+    window.AndroidBridge.cancelVerification();
+    $('stopVerifyBtn').disabled = true;
+    $('stopVerifyBtn').textContent = 'Deteniendo…';
+    toast('Deteniendo… se guardará lo ya revisado');
+  }
+};
 
 function updateTiming(done,total){
   if (!verifyStart)return;
@@ -1253,6 +1256,24 @@ window.doExport=doExport;
 window.localExports=localExports;
 
 // ── Listas (historial del servidor) ──────────────────────────────────────────
+// Calcula el % de rebote de un lote a partir de status_counts que ya
+// devuelve el backend (Rejected, No MX, SPAM Block cuentan como rebote;
+// "Formato inválido" no cuenta porque ni siquiera se verificó/cobró).
+function computeBounceRate(job){
+  const sc = job.status_counts || {};
+  const bounced = (sc['Rejected']||0) + (sc['No MX']||0) + (sc['SPAM Block']||0);
+  const total = job.total_emails || 0;
+  if (!total) return null;
+  return bounced / total;
+}
+function bounceBadgeHtml(job){
+  const rate = computeBounceRate(job);
+  if (rate === null) return '<span style="color:var(--ink-2);font-size:11px;">—</span>';
+  const pct = Math.round(rate * 100);
+  const color = pct < 5 ? 'var(--green)' : pct < 20 ? 'var(--amber)' : 'var(--red)';
+  return `<span style="color:${color};font-weight:700;font-size:12px;">${pct}%</span>`;
+}
+
 async function loadListas(){
   if (!currentToken)return;
   const cont=$('listasContent');
@@ -1271,7 +1292,13 @@ async function loadListas(){
           <div class="lista-name">${j.filename}</div>
           <div class="lista-meta">${fmtDate(j.created_at)} · ${j.total_emails.toLocaleString()} correos</div>
         </div>
-        <span class="badge-ok" style="white-space:nowrap;">✓ OK</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <div style="text-align:center;">
+            <div style="font-size:9px;color:var(--ink-2);">Rebote</div>
+            ${bounceBadgeHtml(j)}
+          </div>
+          <span class="badge-ok" style="white-space:nowrap;">✓ OK</span>
+        </div>
       </div>`).join('');
   } catch(e){ cont.innerHTML=`<div class="empty-state"><div class="empty-icon">⚠️</div>${e.message}</div>`; }
 }
