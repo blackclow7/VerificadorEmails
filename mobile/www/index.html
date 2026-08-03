@@ -1156,9 +1156,9 @@ $('intervalMonthlyBtn').onclick=()=>{billingInterval='monthly';renderBilling();}
 $('intervalAnnualBtn').onclick=()=>{billingInterval='annual';renderBilling();};
 
 // ── Arranque ──────────────────────────────────────────────────────────────────
-let _booted=false;
+window._booted=false;
 async function boot(){
-  if (_booted)return; _booted=true;
+  if (window._booted)return; window._booted=true;
   await initCapacitor();
   checkPort25('login');
   await loadSession();
@@ -1173,9 +1173,20 @@ async function boot(){
   showLoginView();
 }
 
-document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,150));
-window.addEventListener('pywebviewready',boot);
-document.addEventListener('deviceready',boot,false);
+// En Android esperamos a deviceready (Capacitor lo dispara cuando el WebView está listo)
+// En escritorio esperamos pywebviewready
+// En web usamos DOMContentLoaded con delay
+if (window.Capacitor) {
+  // Ya está listo
+  boot();
+} else {
+  document.addEventListener('deviceready', boot, false);
+  window.addEventListener('pywebviewready', boot);
+  document.addEventListener('DOMContentLoaded', () => {
+    // Dar tiempo a Capacitor para inyectar window.Capacitor
+    setTimeout(() => { if (!window._booted) boot(); }, 300);
+  });
+}
 </script>
 </body>
 </html>
