@@ -2,236 +2,1180 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Green Email Verifier — Prueba de Red</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Green Email Verifier</title>
 <style>
-:root{ --green:#1F8A4C; --green-dark:#166B3A; --green-light:#EAF6EE; --red:#DC2626; }
-*{ box-sizing:border-box; margin:0; padding:0; }
-body{
-  font-family:'Segoe UI', system-ui, sans-serif;
-  background:#FAFAFA; color:#16181D; min-height:100vh;
-  display:flex; flex-direction:column; align-items:center;
+:root{
+  --green:#1F8A4C; --green-dark:#166B3A; --green-light:#EAF6EE;
+  --red:#DC2626;   --amber:#D97706;      --purple:#8B3A8B;
+  --cyan:#1B7A8C;
+  --ink:#16181D;   --ink-2:#6B7280;
+  --bg:#FAFAFA;    --surface:#fff;
+  --border:#E5E7EB;
+  --radius:12px;
 }
-.header{
-  background:var(--green-dark); color:#fff; width:100%;
-  padding:20px 24px; display:flex; align-items:center; gap:14px;
-}
-.header img{ width:38px; height:38px; }
-.header h1{ font-size:18px; font-weight:700; }
-.header p{ font-size:12px; opacity:.8; margin-top:2px; }
+*{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+body{ font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); min-height:100dvh; display:flex; flex-direction:column; }
+.hidden{ display:none!important; }
 
-.card{
-  background:#fff; border:1px solid #E5E7EB; border-radius:14px;
-  padding:24px; margin:24px; width:calc(100% - 48px); max-width:480px;
-}
-.card h2{ font-size:16px; font-weight:700; margin-bottom:6px; }
-.card p{ font-size:13.5px; color:#6B7280; line-height:1.5; margin-bottom:16px; }
+/* ── Login ── */
+#loginView{ display:flex; flex-direction:column; align-items:center; min-height:100dvh; }
+.login-header{ background:var(--green-dark); color:#fff; width:100%; padding:32px 24px 24px; text-align:center; }
+.login-header h1{ font-size:22px; font-weight:800; }
+.login-header p{ font-size:13px; opacity:.75; margin-top:5px; }
+.login-card{ background:var(--surface); border-radius:16px; border:1px solid var(--border); padding:24px; margin:20px 16px; width:calc(100% - 32px); max-width:420px; }
+.login-card h2{ font-size:17px; font-weight:700; margin-bottom:16px; }
 
-.status-box{
-  border-radius:10px; padding:16px; margin-bottom:16px;
-  display:flex; align-items:flex-start; gap:12px;
-}
-.status-box.idle{ background:#F3F4F6; }
-.status-box.testing{ background:#EAF6EE; }
-.status-box.ok{ background:#EAF6EE; }
-.status-box.fail{ background:#FDECEC; }
-.status-icon{ font-size:26px; flex-shrink:0; margin-top:2px; }
-.status-title{ font-weight:700; font-size:15px; }
-.status-detail{ font-size:12.5px; color:#6B7280; margin-top:4px; line-height:1.4; }
+/* ── Campos ── */
+.field{ display:flex; flex-direction:column; gap:5px; margin-bottom:13px; }
+.field label{ font-size:12px; font-weight:600; color:var(--ink-2); text-transform:uppercase; letter-spacing:.4px; }
+.field input{ border:1.5px solid var(--border); border-radius:8px; padding:12px 14px; font-size:15px; font-family:inherit; background:var(--surface); transition:border-color .15s; }
+.field input:focus{ outline:none; border-color:var(--green); }
+.field input:disabled{ background:var(--bg); color:var(--ink-2); }
 
-.progress{ height:6px; background:#E5E7EB; border-radius:3px; overflow:hidden; margin-bottom:16px; }
-.progress-fill{ height:100%; width:0%; background:var(--green); border-radius:3px; transition:width 6s linear; }
+/* ── Port25 bar ── */
+.port25-bar{ display:flex; align-items:center; gap:10px; background:var(--green-light); border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:13px; }
+.port25-icon{ font-size:20px; flex-shrink:0; }
+.port25-text{ flex:1; line-height:1.4; }
+.port25-retry{ font-size:12px; color:var(--green-dark); font-weight:700; background:none; border:none; cursor:pointer; padding:4px 8px; border-radius:6px; flex-shrink:0; }
+.progress-bar{ height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-bottom:12px; }
+.progress-fill{ height:100%; width:0%; background:var(--green); border-radius:2px; transition:width 6s linear; }
 
-.btn{
-  width:100%; padding:14px; border:none; border-radius:10px; font-size:15px;
-  font-weight:700; cursor:pointer; font-family:inherit;
-  background:var(--green); color:#fff; transition:background .15s;
-}
-.btn:hover{ background:var(--green-dark); }
+/* ── Botones ── */
+.btn{ width:100%; padding:14px; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; background:var(--green); color:#fff; transition:background .15s; }
+.btn:active{ background:var(--green-dark); }
 .btn:disabled{ opacity:.5; cursor:not-allowed; }
-.btn.secondary{ background:#fff; color:var(--green); border:1.5px solid var(--green); margin-top:10px; }
+.btn-outline{ padding:10px 16px; border:1.5px solid var(--green); border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; background:var(--surface); color:var(--green); transition:background .15s; }
+.btn-outline:active{ background:var(--green-light); }
+.btn-ghost{ width:100%; padding:12px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; background:transparent; color:var(--ink-2); margin-top:10px; }
+.btn-ghost:active{ border-color:var(--green); color:var(--green); }
+.btn-sm{ padding:8px 14px; border:1.5px solid var(--green); border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; background:var(--surface); color:var(--green); }
+.btn-sm:active{ background:var(--green-light); }
+.btn-danger{ background:var(--red); color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
 
-.info-box{
-  background:var(--green-light); border-radius:10px; padding:14px; margin-top:16px;
-  font-size:12.5px; color:var(--green-dark); line-height:1.5;
-}
-.info-box b{ font-weight:700; }
-.timer{ font-size:12px; color:#6B7280; text-align:center; margin-top:8px; }
+/* ── Mensajes ── */
+.error-box{ background:#FDECEC; border:1px solid #FECACA; border-radius:8px; padding:10px 14px; font-size:13px; color:var(--red); margin-bottom:12px; }
+.success-box{ background:var(--green-light); border:1px solid #86efac; border-radius:8px; padding:10px 14px; font-size:13px; color:var(--green-dark); margin-bottom:12px; }
 
-.result-full{ margin-top:16px; border-top:1px solid #E5E7EB; padding-top:16px; }
-.result-row{ display:flex; justify-content:space-between; font-size:13px; padding:6px 0; border-bottom:1px solid #F3F4F6; }
-.result-row:last-child{ border-bottom:none; }
-.result-label{ color:#6B7280; }
-.result-value{ font-weight:600; }
-.badge{ font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; }
-.badge.ok{ background:var(--green-light); color:var(--green-dark); }
-.badge.fail{ background:#FDECEC; color:var(--red); }
+/* ── App Shell ── */
+#appShell{ display:flex; flex-direction:column; min-height:100dvh; }
+
+/* Topbar */
+.topbar{ background:var(--green-dark); color:#fff; display:flex; align-items:center; gap:8px; padding:14px 16px; flex-shrink:0; position:sticky; top:0; z-index:100; }
+.topbar-title{ font-weight:800; font-size:16px; flex:1; }
+.credits-chip{ background:rgba(255,255,255,.15); border-radius:999px; padding:4px 12px; font-size:13px; font-weight:700; white-space:nowrap; cursor:pointer; }
+#userCardBtn{ background:rgba(255,255,255,.2); border:none; border-radius:50%; width:34px; height:34px; font-size:13px; font-weight:700; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+/* Menú usuario */
+#userMenu{ position:fixed; top:58px; right:12px; z-index:999; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.12); min-width:180px; padding:8px 0; }
+.menu-item{ display:block; width:100%; text-align:left; padding:12px 18px; font-size:14px; font-weight:600; background:none; border:none; cursor:pointer; color:var(--ink); font-family:inherit; }
+.menu-item.danger{ color:var(--red); }
+.menu-item:active{ background:var(--bg); }
+.menu-divider{ height:1px; background:var(--border); margin:4px 0; }
+.menu-meta{ padding:10px 18px 6px; font-size:12px; color:var(--ink-2); }
+
+/* Nav inferior */
+.bottom-nav{ background:var(--surface); border-top:1px solid var(--border); display:flex; position:sticky; bottom:0; z-index:100; flex-shrink:0; }
+.nav-item{ flex:1; display:flex; flex-direction:column; align-items:center; padding:10px 4px 8px; background:none; border:none; cursor:pointer; font-size:10px; font-weight:600; color:var(--ink-2); gap:3px; font-family:inherit; }
+.nav-item.active{ color:var(--green); }
+.nav-icon{ font-size:20px; }
+
+/* Páginas */
+.page-content{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.page{ padding:16px; }
+
+/* ── Sección label ── */
+.section-label{ font-size:11px; font-weight:700; color:var(--ink-2); text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px; }
+
+/* ── Cards ── */
+.card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
+.card h3{ font-size:15px; font-weight:700; margin-bottom:10px; }
+
+/* ── Verificador ── */
+.dropzone{ border:2px dashed var(--border); border-radius:12px; padding:28px 16px; text-align:center; cursor:pointer; background:var(--bg); margin-bottom:12px; }
+.dropzone:active{ border-color:var(--green); background:var(--green-light); }
+.dropzone-icon{ font-size:34px; margin-bottom:8px; }
+.dropzone-title{ font-weight:700; font-size:15px; margin-bottom:4px; }
+.dropzone-sub{ font-size:12.5px; color:var(--ink-2); }
+.file-chosen{ background:var(--green-light); border-radius:12px; padding:12px 14px; display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.file-chosen-icon{ font-size:26px; flex-shrink:0; }
+.file-chosen-info{ flex:1; overflow:hidden; }
+.file-chosen-name{ font-weight:700; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file-chosen-sub{ font-size:12px; color:var(--ink-2); }
+
+/* Donut */
+.donut-wrap{ display:flex; align-items:center; gap:12px; margin:12px 0; }
+.legend{ flex:1; display:flex; flex-direction:column; gap:5px; }
+.legend-item{ display:flex; align-items:center; gap:6px; font-size:12px; }
+.legend-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+/* Tabla */
+.table-wrap{ overflow-x:auto; margin-top:10px; }
+table{ width:100%; border-collapse:collapse; font-size:12px; }
+th{ text-align:left; padding:7px 6px; border-bottom:2px solid var(--border); font-size:11px; color:var(--ink-2); white-space:nowrap; font-weight:700; }
+td{ padding:6px 6px; border-bottom:1px solid var(--bg); vertical-align:top; }
+tr:last-child td{ border-bottom:none; }
+.badge-status{ display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+.badge-ok{ display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; background:var(--green-light); color:var(--green-dark); }
+
+/* ── Créditos ── */
+.big-number{ font-size:48px; font-weight:800; color:var(--green); line-height:1; margin:8px 0 4px; }
+.hist-row{ display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
+.hist-row:last-child{ border-bottom:none; }
+.hist-icon{ width:32px; height:32px; background:var(--green-light); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+.hist-meta{ flex:1; }
+.hist-name{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hist-date{ font-size:11px; color:var(--ink-2); margin-top:2px; }
+.hist-amount{ font-weight:700; font-size:13px; color:var(--ink); white-space:nowrap; }
+
+/* ── Billing modal ── */
+.modal-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; display:flex; align-items:flex-end; }
+.modal-box{ background:var(--surface); border-radius:20px 20px 0 0; padding:24px 16px; width:100%; max-height:85dvh; overflow-y:auto; }
+.modal-box h2{ font-size:18px; font-weight:800; margin-bottom:4px; }
+.modal-subtitle{ font-size:13px; color:var(--ink-2); margin-bottom:16px; }
+.interval-toggle{ display:flex; gap:0; background:var(--bg); border-radius:8px; padding:3px; margin-bottom:16px; border:1px solid var(--border); }
+.interval-btn{ flex:1; padding:8px; font-size:13px; font-weight:600; border:none; border-radius:6px; cursor:pointer; font-family:inherit; background:transparent; color:var(--ink-2); }
+.interval-btn.active{ background:var(--surface); color:var(--green); box-shadow:0 1px 4px rgba(0,0,0,.1); }
+.plan-grid{ display:flex; flex-direction:column; gap:10px; margin-bottom:20px; }
+.plan-card{ border:1.5px solid var(--border); border-radius:12px; padding:14px; background:var(--surface); }
+.plan-card.popular{ border-color:var(--green); }
+.plan-card-header{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; }
+.plan-name{ font-weight:700; font-size:15px; }
+.plan-popular-badge{ font-size:10px; font-weight:700; background:var(--green); color:#fff; padding:2px 8px; border-radius:999px; }
+.plan-price{ font-size:24px; font-weight:800; color:var(--green); }
+.plan-price span{ font-size:13px; font-weight:500; color:var(--ink-2); }
+.plan-credits{ font-size:12.5px; color:var(--ink-2); margin:4px 0 10px; }
+.pack-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px; }
+.pack-card{ border:1.5px solid var(--border); border-radius:10px; padding:12px 8px; text-align:center; background:var(--surface); }
+.pack-name{ font-weight:700; font-size:13px; margin-bottom:4px; }
+.pack-price{ font-size:18px; font-weight:800; color:var(--green); }
+.pack-credits{ font-size:11px; color:var(--ink-2); margin:3px 0 8px; }
+
+/* ── Listas ── */
+.lista-row{ display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); }
+.lista-row:last-child{ border-bottom:none; }
+.lista-icon{ font-size:24px; flex-shrink:0; }
+.lista-info{ flex:1; overflow:hidden; }
+.lista-name{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lista-meta{ font-size:11px; color:var(--ink-2); margin-top:2px; }
+.lista-actions{ display:flex; gap:6px; flex-shrink:0; }
+
+/* ── Ajustes ── */
+.settings-group{ margin-bottom:20px; }
+.settings-group h3{ font-size:14px; font-weight:700; color:var(--ink-2); text-transform:uppercase; letter-spacing:.4px; margin-bottom:12px; border-top:1px solid var(--border); padding-top:14px; }
+.settings-group:first-child h3{ border-top:none; padding-top:0; }
+.info-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--bg); font-size:14px; }
+.info-row:last-child{ border-bottom:none; }
+.info-label{ color:var(--ink-2); }
+.info-value{ font-weight:600; }
+
+/* ── Ayuda / FAQ ── */
+.faq-item{ padding:14px 0; border-bottom:1px solid var(--border); }
+.faq-item:last-child{ border-bottom:none; }
+.faq-q{ font-weight:700; font-size:14px; margin-bottom:6px; }
+.faq-a{ font-size:13px; color:var(--ink-2); line-height:1.6; }
+
+/* ── Tabs ── */
+.tabs{ display:flex; gap:0; background:var(--bg); border-radius:10px; padding:4px; border:1px solid var(--border); margin-bottom:16px; overflow-x:auto; }
+.tab-btn{ padding:8px 14px; font-size:13px; font-weight:600; border:none; border-radius:8px; cursor:pointer; font-family:inherit; background:transparent; color:var(--ink-2); white-space:nowrap; }
+.tab-btn.active{ background:var(--surface); color:var(--green); box-shadow:0 1px 4px rgba(0,0,0,.1); }
+
+/* ── Búsqueda ── */
+.search-input{ width:100%; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; background:var(--surface); margin-bottom:12px; }
+.search-input:focus{ outline:none; border-color:var(--green); }
+
+/* ── Empty state ── */
+.empty-state{ text-align:center; padding:32px 16px; color:var(--ink-2); font-size:14px; }
+.empty-state .empty-icon{ font-size:36px; margin-bottom:10px; }
+
+/* ── Toast ── */
+#toast{ position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(20px); background:#16181D; color:#fff; border-radius:10px; padding:10px 20px; font-size:13px; font-weight:600; opacity:0; transition:opacity .2s, transform .2s; pointer-events:none; z-index:9999; white-space:nowrap; max-width:80vw; overflow:hidden; text-overflow:ellipsis; }
+#toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div>
-    <h1>Green Email Verifier</h1>
-    <p>Prueba de acceso al puerto 25 (SMTP)</p>
+<!-- ══════════ LOGIN ══════════ -->
+<div id="loginView">
+  <div class="login-header">
+    <h1>🌿 Green Email Verifier</h1>
+    <p>Verificación SMTP real desde tu dispositivo</p>
+  </div>
+
+  <div class="login-card" id="loginPanel">
+    <h2>Iniciar sesión</h2>
+    <div class="port25-bar" id="port25Bar">
+      <div class="port25-icon" id="port25Icon">⏳</div>
+      <div class="port25-text" id="port25Text">Comprobando conexión SMTP…</div>
+      <button class="port25-retry hidden" id="port25RetryBtn">Reintentar</button>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="port25ProgressFill"></div></div>
+    <div id="loginErrorBox"></div>
+    <div class="field"><label>Correo electrónico</label><input type="email" id="loginEmail" placeholder="tu@email.com" autocomplete="email"></div>
+    <div class="field"><label>Contraseña</label><input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"></div>
+    <button class="btn" id="loginBtn" disabled>Iniciar sesión</button>
+    <button class="btn-ghost" id="goRegisterBtn">¿No tienes cuenta? Regístrate</button>
+    <p style="text-align:center;margin-top:14px;font-size:13px;"><a href="#" id="forgotBtn" style="color:var(--green);text-decoration:none;font-weight:600;">¿Olvidaste tu contraseña?</a></p>
+  </div>
+
+  <div class="login-card hidden" id="registerPanel">
+    <h2>Crear cuenta</h2>
+    <div id="registerErrorBox"></div>
+    <div class="field"><label>Correo electrónico</label><input type="email" id="regEmail" placeholder="tu@email.com"></div>
+    <div class="field"><label>Contraseña (mín. 8 caracteres)</label><input type="password" id="regPass" placeholder="••••••••"></div>
+    <div class="field"><label>Confirmar contraseña</label><input type="password" id="regPass2" placeholder="••••••••"></div>
+    <button class="btn" id="registerBtn">Crear cuenta</button>
+    <button class="btn-ghost" id="goLoginBtn">¿Ya tienes cuenta? Inicia sesión</button>
+  </div>
+
+  <div class="login-card hidden" id="forgotPanel">
+    <h2>Recuperar contraseña</h2>
+    <div id="forgotMsg"></div>
+    <div class="field"><label>Correo electrónico</label><input type="email" id="forgotEmail" placeholder="tu@email.com"></div>
+    <button class="btn" id="forgotSubmitBtn">Enviar enlace de recuperación</button>
+    <button class="btn-ghost" id="backToLoginBtn">Volver al login</button>
   </div>
 </div>
 
-<div class="card">
-  <h2>¿Tu red permite verificación SMTP real?</h2>
-  <p>Esta prueba comprueba si el puerto 25 está abierto en tu red actual (datos móviles o WiFi), lo cual es necesario para verificar correos a nivel de buzón real.</p>
+<!-- ══════════ APP SHELL ══════════ -->
+<div id="appShell" class="hidden">
 
-  <div class="status-box idle" id="statusBox">
-    <div class="status-icon" id="statusIcon">📡</div>
-    <div>
-      <div class="status-title" id="statusTitle">Listo para probar</div>
-      <div class="status-detail" id="statusDetail">Presiona el botón para iniciar la prueba de conexión</div>
-    </div>
+  <div class="topbar">
+    <span class="topbar-title">🌿 Green Email Verifier</span>
+    <span class="credits-chip" id="creditsChip" onclick="goToPage('creditos')">💳 <span id="creditsValue">—</span></span>
+    <button id="userCardBtn"><span id="userAvatar">??</span></button>
   </div>
 
-  <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
-  <div class="timer" id="timerLabel"></div>
+  <div id="userMenu" class="hidden">
+    <div class="menu-meta" id="userMenuEmail">—</div>
+    <div style="padding:0 18px 8px;"><span id="planBadgeMenu" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--green-light);color:var(--green-dark);">Sin plan</span></div>
+    <div class="menu-divider"></div>
+    <button class="menu-item" id="menuCreditsBtn">💳 Créditos y planes</button>
+    <button class="menu-item" id="menuListasBtn">📋 Listas verificadas</button>
+    <button class="menu-item" id="menuAjustesBtn">⚙️ Ajustes</button>
+    <div class="menu-divider"></div>
+    <button class="menu-item danger" id="menuLogoutBtn">Cerrar sesión</button>
+  </div>
 
-  <button class="btn" id="testBtn" onclick="runTest()">Probar ahora</button>
+  <div class="page-content">
 
-  <div id="resultFull" class="result-full" style="display:none;">
-    <div class="result-row">
-      <span class="result-label">Red actual</span>
-      <span class="result-value" id="rNetwork">—</span>
+    <!-- ── VERIFICADOR ── -->
+    <div class="page" id="page-verificador">
+      <div class="card" style="margin-bottom:12px;">
+        <div class="port25-bar" style="margin:0 0 8px;">
+          <div class="port25-icon" id="vPort25Icon">⏳</div>
+          <div class="port25-text" id="vPort25Text">Comprobando puerto 25…</div>
+          <button class="port25-retry" id="vPort25RetryBtn">Reintentar</button>
+        </div>
+        <div class="progress-bar" style="margin:0;"><div class="progress-fill" id="vPort25ProgressFill"></div></div>
+      </div>
+
+      <div id="vFilePicker">
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone-icon">📂</div>
+          <div class="dropzone-title">Cargar CSV, Excel o TXT</div>
+          <div class="dropzone-sub">Un email por fila — también puedes pegar abajo</div>
+        </div>
+        <div style="margin:8px 0 4px;font-size:12px;color:var(--ink-2);text-align:center;">— o pega emails directamente —</div>
+        <textarea id="emailPasteArea" rows="4" placeholder="email1@dominio.com&#10;email2@dominio.com&#10;…"
+          style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px;font-size:13px;font-family:monospace;resize:vertical;background:var(--surface);color:var(--ink);"></textarea>
+        <button class="btn-sm" id="pasteVerifyBtn" style="margin-top:8px;width:100%;">Verificar emails pegados</button>
+      </div>
+
+      <div class="file-chosen hidden" id="vFileChosen">
+        <div class="file-chosen-icon">📄</div>
+        <div class="file-chosen-info">
+          <div class="file-chosen-name" id="vFileName">—</div>
+          <div class="file-chosen-sub" id="vFileSub">Listo para verificar</div>
+        </div>
+        <button class="btn-sm" id="vChangeFileBtn">Cambiar</button>
+      </div>
+
+      <div id="errorBoxVerify"></div>
+      <button class="btn" id="verifyBtn" style="margin-bottom:14px;">Verificar (SMTP real)</button>
+
+      <div id="vProgressWrap" class="card hidden">
+        <div class="section-label">Progreso en tiempo real</div>
+        <div id="vTimingElapsed" style="font-size:12px;color:var(--ink-2);">—</div>
+        <div id="vTimingEta" style="font-size:12px;color:var(--ink-2);margin-bottom:10px;">—</div>
+        <div class="donut-wrap">
+          <svg id="donutSvg" width="190" height="190" viewBox="0 0 200 200" style="flex-shrink:0;"></svg>
+          <div class="legend" id="donutLegend"></div>
+        </div>
+      </div>
+
+      <div id="detailCard" class="card hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="font-weight:700;font-size:15px;">Resultados</div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-sm" id="toggleDetailBtn">Ver detalle</button>
+            <button class="btn-sm" id="exportBtn">⬇ CSV</button>
+          </div>
+        </div>
+        <div id="detailTableWrap" class="table-wrap hidden">
+          <table>
+            <thead><tr><th>Email</th><th>Estado</th><th>Detalle</th><th>Tox.</th></tr></thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
-    <div class="result-row">
-      <span class="result-label">Puerto 25</span>
-      <span id="rPort"></span>
+
+    <!-- ── LISTAS ── -->
+    <div class="page hidden" id="page-listas">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div>
+          <div style="font-size:18px;font-weight:800;">Listas verificadas</div>
+          <div style="font-size:13px;color:var(--ink-2);">Historial de lotes procesados</div>
+        </div>
+        <button class="btn-sm" id="refreshListasBtn">↻ Actualizar</button>
+      </div>
+      <input class="search-input" id="listasSearch" placeholder="🔍 Buscar archivo…">
+      <div id="listasContent">
+        <div class="empty-state" id="listasEmpty">
+          <div class="empty-icon">📋</div>
+          Aún no hay lotes procesados.
+        </div>
+      </div>
     </div>
-    <div class="result-row">
-      <span class="result-label">Servidor que respondió</span>
-      <span class="result-value" id="rServer">—</span>
+
+    <!-- ── EXPORTACIONES ── -->
+    <div class="page hidden" id="page-exportaciones">
+      <div style="margin-bottom:12px;">
+        <div style="font-size:18px;font-weight:800;">Exportaciones</div>
+        <div style="font-size:13px;color:var(--ink-2);">Archivos guardados en este dispositivo — nunca suben al servidor</div>
+      </div>
+      <input class="search-input" id="exportSearch" placeholder="🔍 Buscar exportación…">
+      <div id="exportaciones-content">
+        <div class="empty-state" id="exportsEmpty">
+          <div class="empty-icon">📁</div>
+          Aún no se ha exportado ningún archivo.
+        </div>
+      </div>
     </div>
-    <div class="result-row">
-      <span class="result-label">Tiempo de respuesta</span>
-      <span class="result-value" id="rTime">—</span>
+
+    <!-- ── CRÉDITOS ── -->
+    <div class="page hidden" id="page-creditos">
+      <div style="margin-bottom:12px;">
+        <div style="font-size:18px;font-weight:800;">Créditos</div>
+        <div style="font-size:13px;color:var(--ink-2);">Administra tu saldo y plan</div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div style="font-size:13px;color:var(--ink-2);font-weight:600;">Créditos disponibles</div>
+        <div class="big-number" id="creditosBigNumber">—</div>
+        <div style="font-size:13px;color:var(--ink-2);">créditos restantes</div>
+        <div style="margin-top:12px;font-weight:700;font-size:15px;" id="planNameLabel">Tu plan: —</div>
+        <div style="font-size:12px;color:var(--ink-2);margin-top:4px;" id="planRenewLabel">—</div>
+        <button class="btn" id="viewPlansBtn" style="margin-top:14px;">Ver planes y comprar</button>
+      </div>
+
+      <div style="font-size:16px;font-weight:700;margin-bottom:10px;">Historial de consumo</div>
+      <div class="card">
+        <div id="consumoHistory"></div>
+        <div class="empty-state hidden" id="consumoEmpty" style="padding:16px;">Sin consumo registrado aún.</div>
+      </div>
     </div>
+
+    <!-- ── AJUSTES ── -->
+    <div class="page hidden" id="page-ajustes">
+      <div style="font-size:18px;font-weight:800;margin-bottom:16px;">Ajustes</div>
+
+      <div class="tabs" id="settingsTabs">
+        <button class="tab-btn active" data-tab="cuenta">Cuenta</button>
+        <button class="tab-btn" data-tab="preferencias">Preferencias</button>
+        <button class="tab-btn" data-tab="seguridad">Seguridad</button>
+        <button class="tab-btn" data-tab="about">Sobre la app</button>
+      </div>
+
+      <div id="tab-cuenta">
+        <div class="card">
+          <div class="settings-group">
+            <h3>Información de la cuenta</h3>
+            <div class="info-row"><span class="info-label">Email</span><span class="info-value" id="ajustesEmail">—</span></div>
+            <div class="info-row"><span class="info-label">Plan</span><span class="info-value" id="ajustesPlan">—</span></div>
+            <div class="info-row"><span class="info-label">Créditos</span><span class="info-value" id="ajustesCredits">—</span></div>
+          </div>
+          <div class="settings-group">
+            <h3>Nombre para mostrar</h3>
+            <div class="field" style="margin-bottom:10px;"><input type="text" id="settingsNameInput" placeholder="Tu nombre (opcional)"></div>
+            <button class="btn-outline" id="saveNameBtn" style="width:100%;">Guardar nombre</button>
+          </div>
+          <div class="settings-group">
+            <h3>Sesión</h3>
+            <button class="btn-danger" id="ajustesLogoutBtn" style="width:100%;">Cerrar sesión</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-preferencias" class="hidden">
+        <div class="card">
+          <div class="settings-group">
+            <h3>Parámetros SMTP</h3>
+            <div class="field">
+              <label>HELO domain</label>
+              <input type="text" id="prefHeloInput" placeholder="gmail.com">
+            </div>
+            <div class="field">
+              <label>FROM address</label>
+              <input type="text" id="prefFromInput" placeholder="verify@gmail.com">
+            </div>
+            <div class="field">
+              <label>Timeout (segundos)</label>
+              <input type="number" id="prefTimeoutInput" placeholder="8" min="3" max="30">
+            </div>
+            <div class="field">
+              <label>Hilos paralelos</label>
+              <input type="number" id="prefWorkersInput" placeholder="6" min="1" max="20">
+            </div>
+            <button class="btn-outline" id="savePrefBtn" style="width:100%;">Guardar preferencias</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-seguridad" class="hidden">
+        <div class="card">
+          <div class="settings-group">
+            <h3>Cambiar contraseña</h3>
+            <div id="changePassMsg"></div>
+            <div class="field"><label>Nueva contraseña</label><input type="password" id="newPass1" placeholder="••••••••"></div>
+            <div class="field"><label>Confirmar nueva contraseña</label><input type="password" id="newPass2" placeholder="••••••••"></div>
+            <button class="btn-outline" id="changePassBtn" style="width:100%;">Cambiar contraseña</button>
+          </div>
+          <div class="settings-group">
+            <h3>Privacidad</h3>
+            <p style="font-size:13px;color:var(--ink-2);line-height:1.6;">
+              Los emails verificados <b>nunca</b> se envían al servidor. Solo se reporta un conteo agregado para descontar créditos. Toda la verificación SMTP ocurre directamente desde este dispositivo.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-about" class="hidden">
+        <div class="card">
+          <div class="info-row"><span class="info-label">App</span><span class="info-value">Green Email Verifier</span></div>
+          <div class="info-row"><span class="info-label">Plataforma</span><span class="info-value" id="aboutPlatform">Android</span></div>
+          <div class="info-row"><span class="info-label">Versión</span><span class="info-value">2.0</span></div>
+          <div class="info-row"><span class="info-label">Backend</span><span class="info-value" style="font-size:11px;">verificadoremails-api.onrender.com</span></div>
+        </div>
+        <div class="card" style="margin-top:0;">
+          <div style="font-size:13px;color:var(--ink-2);line-height:1.7;">
+            <b>¿Qué hace esta app?</b><br>
+            Verifica si una dirección de email realmente existe, conectándose directamente al servidor de correo del dominio (SMTP RCPT TO) sin enviar ningún mensaje.<br><br>
+            <b>¿Por qué necesita datos móviles?</b><br>
+            La verificación real (SMTP) requiere el puerto 25 saliente, que normalmente está disponible en datos móviles (Telcel, Movistar) pero bloqueado en WiFi y hosting.
+          </div>
+        </div>
+        <div class="card" style="margin-top:0;">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px;">¿Dudas o problemas?</div>
+          <a href="mailto:soporte@greenemailverifier.com" style="color:var(--green);font-weight:600;font-size:14px;">soporte@greenemailverifier.com</a>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-content -->
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-page="verificador"><span class="nav-icon">✅</span>Verificar</button>
+    <button class="nav-item" data-page="listas"><span class="nav-icon">📋</span>Listas</button>
+    <button class="nav-item" data-page="exportaciones"><span class="nav-icon">📁</span>Exports</button>
+    <button class="nav-item" data-page="creditos"><span class="nav-icon">💳</span>Créditos</button>
+    <button class="nav-item" data-page="ajustes"><span class="nav-icon">⚙️</span>Ajustes</button>
+  </nav>
+</div>
+
+<!-- ══════════ BILLING MODAL ══════════ -->
+<div id="billingModal" class="modal-overlay hidden" onclick="if(event.target===this)$('billingModal').classList.add('hidden')">
+  <div class="modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h2>Planes y créditos</h2>
+      <button onclick="$('billingModal').classList.add('hidden')" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--ink-2);">✕</button>
+    </div>
+    <p class="modal-subtitle">Elige el plan que mejor se adapte a ti</p>
+    <div class="interval-toggle">
+      <button class="interval-btn active" id="intervalMonthlyBtn">Mensual</button>
+      <button class="interval-btn" id="intervalAnnualBtn">Anual (15% desc.)</button>
+    </div>
+    <div class="section-label">Planes de suscripción</div>
+    <div class="plan-grid" id="plansGrid"></div>
+    <div class="section-label" style="margin-top:4px;">Créditos sueltos (pago único)</div>
+    <p style="font-size:12px;color:var(--ink-2);margin-bottom:10px;">Sin suscripción — para probar o para uso ocasional.</p>
+    <div class="pack-grid" id="packsGrid"></div>
+    <div id="billingMsg" style="margin-bottom:10px;"></div>
+    <button class="btn-ghost" onclick="$('billingModal').classList.add('hidden')">Cerrar</button>
   </div>
 </div>
 
-<div class="card" id="conclusionCard" style="display:none;">
-  <h2 id="conclusionTitle"></h2>
-  <p id="conclusionText"></p>
-</div>
+<div id="toast"></div>
 
-<script>
-function getPort25(){
-  if (window.Capacitor && window.Capacitor.registerPlugin){
-    return window.Capacitor.registerPlugin('Port25');
-  }
-  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Port25){
-    return window.Capacitor.Plugins.Port25;
-  }
-  return null;
+<!-- ══════════ SCRIPT ══════════ -->
+<script type="module">
+// ── Constantes ───────────────────────────────────────────────────────────────
+const API_BASE = "https://verificadoremails-api.onrender.com";
+const SUPABASE_URL  = 'https://wrdnqbjfrhcqynuvoiyy.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndyZG5xYmpmcmhjcXludXZvaXl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNDQwMDYsImV4cCI6MjEwMDkyMDAwNn0.h8VvsngtyV7oostNvU0sJWkxmehRALDfd_l8FdWmM9k';
+
+const PLANS = [
+  { key:'esencial',   name:'Esencial',   monthly:12,   annual:122.40,  credits:1500  },
+  { key:'starter',    name:'Starter',    monthly:19,   annual:193.80,  credits:2800,  popular:true },
+  { key:'pro',        name:'Pro',        monthly:30,   annual:306.00,  credits:5000  },
+  { key:'growth',     name:'Growth',     monthly:69,   annual:703.80,  credits:12000 },
+  { key:'business',   name:'Business',   monthly:119,  annual:1213.80, credits:22000 },
+  { key:'enterprise', name:'Enterprise', monthly:399,  annual:4069.80, credits:75000 },
+];
+const PACKS = [
+  { key:'chico',   name:'Chico',   price:3,  credits:100  },
+  { key:'mediano', name:'Mediano', price:12, credits:500  },
+  { key:'grande',  name:'Grande',  price:40, credits:2000 },
+];
+
+const STATUS_COLORS = {
+  'Accepted':'#1F8A4C','Catch-All':'#1B7A8C','Rejected':'#DC2626',
+  'No MX':'#DC2626','MX Error':'#DC2626','SPAM Block':'#8B3A8B',
+  'Timeout':'#D97706','Greylisted':'#D97706','Limited':'#D97706',
+};
+const STATUS_ORDER = ['Accepted','Catch-All','Rejected','No MX','SPAM Block','Timeout','Greylisted','Limited','MX Error'];
+
+// ── Estado ───────────────────────────────────────────────────────────────────
+let currentToken = null, currentEmail = null;
+let port25Open = null, vPort25Open = null;
+let selectedFile = null;
+let lastResults = null, lastFilename = null;
+let verifyTotal = 0, verifyStart = null, verifyTimerID = null;
+const liveCounts = {};
+let billingInterval = 'monthly';
+let SmtpVerifier = null;
+let prefs = { helo:'gmail.com', from:'verify@gmail.com', timeout:8, workers:6 };
+
+// Exportaciones guardadas en memoria del dispositivo (por sesión)
+// En Android usaremos localStorage via Capacitor Preferences si disponible,
+// o bien el storage de artefactos del propio plugin
+let localExports = []; // [{name, date, csv}]
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function toast(msg, ms=2500){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),ms); }
+function authHeaders(){ return { 'Authorization':`Bearer ${currentToken}` }; }
+function fmtSec(s){ s=Math.max(0,Math.round(s)); const m=Math.floor(s/60),r=s%60; return m>0?`${m}m ${r}s`:`${r}s`; }
+function fmtDate(iso){ return new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+
+// ── Detección de entorno ──────────────────────────────────────────────────────
+function isAndroid(){ return !!window.Capacitor; }
+function isPy(){ return !!(window.pywebview && window.pywebview.api); }
+function pyApi(){ return window.pywebview.api; }
+
+async function initCapacitor(){
+  if (!isAndroid()) return;
+  try {
+    // Capacitor inyecta registerPlugin en window.Capacitor directamente
+    // No necesitamos importar del CDN — funciona offline
+    SmtpVerifier = window.Capacitor.registerPlugin('SmtpVerifier');
+  } catch(e){ console.warn('Capacitor init:', e); }
 }
 
-let timerInterval = null;
-let testRunning = false;
-
-function detectNetwork(){
-  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  if (!conn) return 'Desconocida';
-  const type = conn.type || conn.effectiveType || 'desconocida';
-  const typeMap = { 'wifi':'WiFi', 'cellular':'Datos móviles', '4g':'4G', '3g':'3G', '2g':'2G', 'ethernet':'Ethernet' };
-  return typeMap[type] || type;
+// ── Sesión persistente ────────────────────────────────────────────────────────
+// Android: localStorage (Capacitor lo persiste entre sesiones en el WebView nativo)
+// Escritorio: Windows Credential Manager vía pywebview
+async function saveSession(token, email){
+  currentToken = token; currentEmail = email;
+  if (isPy()){ try { await pyApi().set_credential('access_token',token); await pyApi().set_credential('user_email',email); } catch(_){} }
+  else { try { localStorage.setItem('gev_token',token); localStorage.setItem('gev_email',email); } catch(_){} }
+}
+async function loadSession(){
+  if (isPy()){
+    try { const t=await pyApi().get_credential('access_token'); const e=await pyApi().get_credential('user_email'); if(t&&e){currentToken=t;currentEmail=e;} } catch(_){}
+  } else {
+    try { currentToken=localStorage.getItem('gev_token'); currentEmail=localStorage.getItem('gev_email'); } catch(_){}
+  }
+}
+async function clearSession(){
+  currentToken=null; currentEmail=null;
+  if (isPy()){ try { await pyApi().delete_credential('access_token'); await pyApi().delete_credential('user_email'); } catch(_){} }
+  else { try { localStorage.removeItem('gev_token'); localStorage.removeItem('gev_email'); } catch(_){} }
 }
 
-window.runTest = async function(){
-  if (testRunning) return;
-  testRunning = true;
+// Preferencias
+function loadPrefs(){
+  try { const p=JSON.parse(localStorage.getItem('gev_prefs')||'{}'); prefs={...prefs,...p}; } catch(_){}
+  $('prefHeloInput').value=prefs.helo;
+  $('prefFromInput').value=prefs.from;
+  $('prefTimeoutInput').value=prefs.timeout;
+  $('prefWorkersInput').value=prefs.workers;
+}
+$('savePrefBtn').onclick=()=>{
+  prefs.helo=$('prefHeloInput').value.trim()||'gmail.com';
+  prefs.from=$('prefFromInput').value.trim()||'verify@gmail.com';
+  prefs.timeout=parseInt($('prefTimeoutInput').value)||8;
+  prefs.workers=parseInt($('prefWorkersInput').value)||6;
+  try { localStorage.setItem('gev_prefs',JSON.stringify(prefs)); } catch(_){}
+  toast('✅ Preferencias guardadas');
+};
 
-  const Port25 = getPort25();
-  if (!Port25){
-    testRunning = false;
-    document.getElementById('statusBox').className = 'status-box fail';
-    document.getElementById('statusIcon').textContent = '❌';
-    document.getElementById('statusTitle').textContent = 'Puente nativo no disponible';
-    document.getElementById('statusDetail').textContent = 'No se pudo acceder al plugin Port25. Reinicia la app e intenta de nuevo.';
-    return;
+// ── Puente nativo ─────────────────────────────────────────────────────────────
+async function nativeCheckPort25(context){
+  if (isAndroid()&&SmtpVerifier) await SmtpVerifier.checkPort25({context});
+  else if (isPy()) await pyApi().check_port25(context);
+  else window.onPort25Result({context,open:false,info:'Versión web — SMTP no disponible aquí'});
+}
+async function nativeVerifyBatch(emails){
+  if (isAndroid()&&SmtpVerifier) await SmtpVerifier.verifyBatch({emails});
+  else if (isPy()) throw new Error('En escritorio usa verify_batch(filePath)');
+  else throw new Error('SMTP no disponible en versión web');
+}
+
+// ── Puerto 25 ─────────────────────────────────────────────────────────────────
+function startPort25Progress(fillId){
+  const f=$(fillId); f.style.transition='none'; f.style.width='0%';
+  void f.offsetWidth; f.style.transition='width 6s linear'; f.style.width='100%';
+}
+function stopPort25Progress(fillId, ok){
+  const f=$(fillId); f.style.transition='width .2s'; f.style.width='100%';
+  f.style.background=ok?'var(--green)':'var(--red)';
+}
+
+window.onPort25Result=function(res){
+  if (res.context==='login'){
+    stopPort25Progress('port25ProgressFill',res.open);
+    port25Open=res.open;
+    $('port25RetryBtn').classList.remove('hidden');
+    if (res.open){
+      $('port25Icon').textContent='✅';
+      $('port25Text').innerHTML=`<b style="color:var(--green)">Puerto disponible</b> — <small>${res.info}</small>`;
+    } else {
+      $('port25Icon').textContent='❌';
+      $('port25Text').innerHTML=`<b style="color:var(--red)">Puerto bloqueado</b> — <small>${res.info}</small>`;
+    }
+    updateLoginBtn();
+  } else if (res.context==='verificador'){
+    stopPort25Progress('vPort25ProgressFill',res.open);
+    vPort25Open=res.open;
+    if (res.open){
+      $('vPort25Icon').textContent='✅';
+      $('vPort25Text').innerHTML=`<b style="color:var(--green)">Puerto disponible — verificación SMTP activa</b>`;
+    } else {
+      $('vPort25Icon').textContent='❌';
+      $('vPort25Text').innerHTML=`<b style="color:var(--red)">Puerto bloqueado</b> <small>— resultados limitados</small>`;
+    }
   }
+};
 
-  document.getElementById('testBtn').disabled = true;
-  document.getElementById('testBtn').textContent = 'Probando…';
-  document.getElementById('resultFull').style.display = 'none';
-  document.getElementById('conclusionCard').style.display = 'none';
+async function checkPort25(context='login'){
+  const fill=context==='login'?'port25ProgressFill':'vPort25ProgressFill';
+  const icon=context==='login'?'port25Icon':'vPort25Icon';
+  const text=context==='login'?'port25Text':'vPort25Text';
+  $(icon).textContent='⏳'; $(text).textContent='Comprobando puerto 25…';
+  if (context==='login'){port25Open=null;updateLoginBtn();}else vPort25Open=null;
+  startPort25Progress(fill);
+  try { await nativeCheckPort25(context); }
+  catch(e){ stopPort25Progress(fill,false); $(icon).textContent='❌'; $(text).innerHTML=`<b style="color:var(--red)">Error</b>: ${e.message}`; if(context==='login'){port25Open=false;updateLoginBtn();} }
+}
+$('port25RetryBtn').onclick=()=>checkPort25('login');
+$('vPort25RetryBtn').onclick=()=>checkPort25('verificador');
 
-  const box = document.getElementById('statusBox');
-  box.className = 'status-box testing';
-  document.getElementById('statusIcon').textContent = '⏳';
-  document.getElementById('statusTitle').textContent = 'Validando puerto 25…';
-  document.getElementById('statusDetail').textContent = 'Conectando a servidores SMTP de prueba…';
+// ── Login / Registro ──────────────────────────────────────────────────────────
+function updateLoginBtn(){ $('loginBtn').disabled=!(port25Open===true); }
 
-  // Barra de progreso animada
-  const fill = document.getElementById('progressFill');
-  fill.style.transition = 'none'; fill.style.width = '0%';
-  void fill.offsetWidth;
-  fill.style.transition = 'width 6s linear'; fill.style.width = '100%';
+$('loginBtn').onclick=async()=>{
+  const email=$('loginEmail').value.trim().toLowerCase(), pass=$('loginPass').value;
+  if (!email||!pass){$('loginErrorBox').innerHTML='<div class="error-box">Completa todos los campos</div>';return;}
+  $('loginBtn').disabled=true; $('loginBtn').textContent='Entrando…';
+  try {
+    const fd=new URLSearchParams(); fd.append('username',email); fd.append('password',pass);
+    const res=await fetch(`${API_BASE}/api/auth/login`,{method:'POST',body:fd,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+    const data=await res.json();
+    if (!res.ok) throw new Error(data.detail||'Error al iniciar sesión');
+    await saveSession(data.access_token,email);
+    $('loginErrorBox').innerHTML='';
+    showApp(email,data.credits??0,data.plan);
+  } catch(e){
+    $('loginErrorBox').innerHTML=`<div class="error-box">${e.message}</div>`;
+    $('loginBtn').disabled=false; $('loginBtn').textContent='Iniciar sesión'; updateLoginBtn();
+  }
+};
 
-  // Contador de segundos
-  let secs = 0;
-  document.getElementById('timerLabel').textContent = `Tiempo transcurrido: ${secs}s`;
-  timerInterval = setInterval(() => {
-    secs++;
-    document.getElementById('timerLabel').textContent = `Tiempo transcurrido: ${secs}s`;
-  }, 1000);
+$('goRegisterBtn').onclick=()=>{$('loginPanel').classList.add('hidden');$('registerPanel').classList.remove('hidden');};
+$('goLoginBtn').onclick=()=>{$('registerPanel').classList.add('hidden');$('loginPanel').classList.remove('hidden');};
 
-  const startTime = Date.now();
-  const network = detectNetwork();
-  document.getElementById('rNetwork').textContent = network;
+$('registerBtn').onclick=async()=>{
+  const email=$('regEmail').value.trim().toLowerCase(), p1=$('regPass').value, p2=$('regPass2').value;
+  if (!email||!p1){$('registerErrorBox').innerHTML='<div class="error-box">Completa todos los campos</div>';return;}
+  if (p1!==p2){$('registerErrorBox').innerHTML='<div class="error-box">Las contraseñas no coinciden</div>';return;}
+  if (p1.length<8){$('registerErrorBox').innerHTML='<div class="error-box">Mínimo 8 caracteres</div>';return;}
+  $('registerBtn').disabled=true; $('registerBtn').textContent='Creando cuenta…';
+  try {
+    const fd=new URLSearchParams(); fd.append('email',email); fd.append('password',p1);
+    const res=await fetch(`${API_BASE}/api/auth/register`,{method:'POST',body:fd,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+    const data=await res.json();
+    if (!res.ok) throw new Error(data.detail||'Error al registrar');
+    $('registerErrorBox').innerHTML=`<div class="success-box">✅ ${data.message||'Cuenta creada. Ya puedes iniciar sesión.'}</div>`;
+    setTimeout(()=>{$('registerPanel').classList.add('hidden');$('loginPanel').classList.remove('hidden');},1800);
+  } catch(e){$('registerErrorBox').innerHTML=`<div class="error-box">${e.message}</div>`;}
+  finally{$('registerBtn').disabled=false;$('registerBtn').textContent='Crear cuenta';}
+};
+
+$('forgotBtn').onclick=(e)=>{e.preventDefault();$('loginPanel').classList.add('hidden');$('forgotPanel').classList.remove('hidden');};
+$('backToLoginBtn').onclick=()=>{$('forgotPanel').classList.add('hidden');$('loginPanel').classList.remove('hidden');};
+$('forgotSubmitBtn').onclick=async()=>{
+  const email=$('forgotEmail').value.trim().toLowerCase();
+  if (!email){$('forgotMsg').innerHTML='<div class="error-box">Ingresa tu email</div>';return;}
+  $('forgotSubmitBtn').disabled=true;
+  try {
+    const fd=new URLSearchParams(); fd.append('email',email);
+    const res=await fetch(`${API_BASE}/api/auth/forgot-password`,{method:'POST',body:fd,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+    const data=await res.json();
+    $('forgotMsg').innerHTML=`<div class="success-box">✅ ${data.message}</div>`;
+  } catch(e){$('forgotMsg').innerHTML=`<div class="error-box">${e.message}</div>`;}
+  finally{$('forgotSubmitBtn').disabled=false;}
+};
+
+// ── App Shell ─────────────────────────────────────────────────────────────────
+function showLoginView(){
+  $('appShell').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+  ['loginPanel','registerPanel','forgotPanel'].forEach(id=>$(id).classList.add('hidden'));
+  $('loginPanel').classList.remove('hidden');
+}
+
+function showApp(email,credits,plan){
+  currentEmail=email;
+  $('loginView').classList.add('hidden');
+  $('appShell').classList.remove('hidden');
+  $('creditsValue').textContent=credits;
+  $('userAvatar').textContent=email.slice(0,2).toUpperCase();
+  $('userMenuEmail').textContent=email;
+  const planLabel=plan?`Plan ${plan}`:'Sin plan';
+  $('planBadgeMenu').textContent=planLabel;
+  $('ajustesEmail').textContent=email;
+  $('ajustesPlan').textContent=plan||'Sin plan';
+  $('ajustesCredits').textContent=credits;
+  loadPrefs();
+  goToPage('verificador');
+  checkPort25('verificador');
+  loadCreditos();
+}
+
+const PAGES=['verificador','listas','exportaciones','creditos','ajustes'];
+function goToPage(name){
+  PAGES.forEach(p=>$(`page-${p}`).classList.toggle('hidden',p!==name));
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===name));
+  $('userMenu').classList.add('hidden');
+  if (name==='listas') loadListas();
+  if (name==='exportaciones') renderExports();
+  if (name==='creditos') loadCreditos();
+  if (name==='ajustes') loadAjustes();
+}
+document.querySelectorAll('.nav-item[data-page]').forEach(b=>b.onclick=()=>goToPage(b.dataset.page));
+
+$('userCardBtn').onclick=(e)=>{e.stopPropagation();$('userMenu').classList.toggle('hidden');};
+document.addEventListener('click',()=>$('userMenu').classList.add('hidden'));
+async function doLogout(){
+  try{await fetch(`${API_BASE}/api/auth/logout`,{method:'POST',headers:authHeaders()});}catch(_){}
+  await clearSession(); showLoginView(); checkPort25('login');
+}
+$('menuLogoutBtn').onclick=doLogout;
+$('ajustesLogoutBtn').onclick=doLogout;
+$('menuCreditsBtn').onclick=()=>{goToPage('creditos');};
+$('menuListasBtn').onclick=()=>{goToPage('listas');};
+$('menuAjustesBtn').onclick=()=>{goToPage('ajustes');};
+
+// ── Ajustes tabs ──────────────────────────────────────────────────────────────
+document.querySelectorAll('#settingsTabs .tab-btn').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#settingsTabs .tab-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    ['cuenta','preferencias','seguridad','about'].forEach(t=>$(`tab-${t}`).classList.toggle('hidden',t!==b.dataset.tab));
+  };
+});
+function loadAjustes(){
+  $('ajustesEmail').textContent=currentEmail||'—';
+  try{$('settingsNameInput').value=localStorage.getItem('gev_name')||'';}catch(_){}
+  loadPrefs();
+  $('aboutPlatform').textContent=isAndroid()?'Android':isPy()?'Escritorio (Windows)':'Web';
+}
+$('saveNameBtn').onclick=()=>{
+  try{localStorage.setItem('gev_name',$('settingsNameInput').value);}catch(_){}
+  toast('✅ Nombre guardado');
+};
+$('changePassBtn').onclick=async()=>{
+  const p1=$('newPass1').value, p2=$('newPass2').value;
+  if (p1.length<8){$('changePassMsg').innerHTML='<div class="error-box">Mínimo 8 caracteres</div>';return;}
+  if (p1!==p2){$('changePassMsg').innerHTML='<div class="error-box">No coinciden</div>';return;}
+  $('changePassBtn').disabled=true;
+  try {
+    const res=await fetch(`${SUPABASE_URL}/auth/v1/user`,{method:'PUT',headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON,'Authorization':`Bearer ${currentToken}`},body:JSON.stringify({password:p1})});
+    if (res.ok){$('changePassMsg').innerHTML='<div class="success-box">✅ Contraseña actualizada</div>';$('newPass1').value='';$('newPass2').value='';}
+    else{const e=await res.json();throw new Error(e.message||'Error');}
+  }catch(e){$('changePassMsg').innerHTML=`<div class="error-box">${e.message}</div>`;}
+  finally{$('changePassBtn').disabled=false;}
+};
+
+// ── Selector de archivo ───────────────────────────────────────────────────────
+$('dropzone').onclick=pickFile;
+async function pickFile(){
+  if (isAndroid()){
+    const inp=document.createElement('input');
+    inp.type='file'; inp.accept='.csv,.txt,.xlsx,.xls';
+    inp.style.display='none'; document.body.appendChild(inp);
+    inp.onchange=async()=>{
+      const file=inp.files[0]; document.body.removeChild(inp);
+      if (!file) return;
+      const emails=await parseFileToEmails(file);
+      if (!emails.length){toast('No se encontraron emails en el archivo');return;}
+      selectedFile={name:file.name,emails};
+      selectFileUI(file.name,`${emails.length} emails encontrados`);
+    };
+    inp.click();
+  } else if (isPy()){
+    try{const path=await pyApi().choose_file();if(path){selectedFile={path};selectFileUI(path.split(/[\\/]/).pop(),'Listo para verificar');}}
+    catch(e){$('errorBoxVerify').innerHTML=`<div class="error-box">${e.message}</div>`;}
+  }
+}
+
+async function parseFileToEmails(file){
+  const name=file.name.toLowerCase();
+  // Excel → usar SheetJS si está disponible
+  if (name.endsWith('.xlsx')||name.endsWith('.xls')){
+    try {
+      const XLSX=await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+      const buf=await file.arrayBuffer();
+      const wb=XLSX.read(buf,{type:'array'});
+      let emails=[];
+      wb.SheetNames.forEach(s=>{
+        const rows=XLSX.utils.sheet_to_json(wb.Sheets[s],{header:1});
+        rows.forEach(row=>row.forEach(cell=>{
+          if (typeof cell==='string'){
+            const m=cell.match(/[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+/g);
+            if (m) emails.push(...m);
+          }
+        }));
+      });
+      return [...new Set(emails)];
+    } catch(e){ console.warn('SheetJS falló, leyendo como texto:', e); }
+  }
+  const text=await file.text();
+  return [...new Set(text.match(/[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+/g)||[])];
+}
+
+function selectFileUI(name,sub){
+  $('vFilePicker').classList.add('hidden'); $('vFileChosen').classList.remove('hidden');
+  $('vFileName').textContent=name; $('vFileSub').textContent=sub;
+  $('vProgressWrap').classList.add('hidden'); $('detailCard').classList.add('hidden');
+}
+$('vChangeFileBtn').onclick=()=>{ selectedFile=null; $('vFileChosen').classList.add('hidden'); $('vFilePicker').classList.remove('hidden'); };
+
+// Pegar emails
+$('pasteVerifyBtn').onclick=()=>{
+  const emails=[...new Set(($('emailPasteArea').value.match(/[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+/g)||[]))];
+  if (!emails.length){toast('No se encontraron emails válidos');return;}
+  selectedFile={name:'pegado.txt',emails};
+  selectFileUI('emails pegados',`${emails.length} emails`);
+};
+
+// ── Verificación ──────────────────────────────────────────────────────────────
+window.onVerifyProgress=function({done,total,result}){
+  verifyTotal=total; liveCounts[result.status]=(liveCounts[result.status]||0)+1;
+  drawDonut(liveCounts,done,total); updateTiming(done,total); appendRow(result);
+};
+
+window.onVerifyComplete=async function(results){
+  lastResults=results; lastFilename=selectedFile?.name||'resultados.csv';
+  if (verifyTimerID){clearInterval(verifyTimerID);verifyTimerID=null;}
+  updateTiming(results.length,results.length);
+  const counts={};
+  results.forEach(r=>counts[r.status]=(counts[r.status]||0)+1);
+  drawDonut(counts,results.length,results.length);
+
+  // Guardar exportación local
+  saveLocalExport(lastFilename, results);
 
   try {
-    const result = await Port25.check();
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    clearInterval(timerInterval);
-    fill.style.transition = 'width .2s'; fill.style.width = '100%';
-    fill.style.background = result.open ? 'var(--green)' : 'var(--red)';
-    document.getElementById('timerLabel').textContent = `Tiempo total: ${elapsed}s`;
-
-    if (result.open){
-      box.className = 'status-box ok';
-      document.getElementById('statusIcon').textContent = '✅';
-      document.getElementById('statusTitle').textContent = 'Puerto disponible';
-      document.getElementById('statusDetail').textContent = `El puerto 25 está abierto en tu red actual.`;
-      document.getElementById('rPort').innerHTML = '<span class="badge ok">Disponible</span>';
-      document.getElementById('rServer').textContent = result.info;
-      document.getElementById('rTime').textContent = `${elapsed}s`;
-      document.getElementById('conclusionCard').style.display = 'block';
-      document.getElementById('conclusionTitle').textContent = '✅ La verificación SMTP real es posible en esta red';
-      document.getElementById('conclusionText').textContent = `El puerto 25 está abierto. Esto significa que ${network === 'Datos móviles' ? 'tus datos móviles' : 'esta red'} permiten hacer verificación real de buzones de correo (Accepted/Rejected), no solo la verificación ligera por DNS.`;
-    } else {
-      box.className = 'status-box fail';
-      document.getElementById('statusIcon').textContent = '❌';
-      document.getElementById('statusTitle').textContent = 'Puerto no disponible';
-      document.getElementById('statusDetail').textContent = result.info;
-      document.getElementById('rPort').innerHTML = '<span class="badge fail">Bloqueado</span>';
-      document.getElementById('rServer').textContent = '—';
-      document.getElementById('rTime').textContent = `${elapsed}s`;
-      document.getElementById('conclusionCard').style.display = 'block';
-      document.getElementById('conclusionTitle').textContent = '⚠️ Solo verificación ligera disponible en esta red';
-      document.getElementById('conclusionText').textContent = 'El puerto 25 está bloqueado en esta red. Solo se puede hacer verificación por DNS (MX + toxicidad), no verificación real de buzón. Esto es independiente del dispositivo — es una restricción de la red/operadora.';
-    }
-
-    document.getElementById('resultFull').style.display = 'block';
-    document.getElementById('testBtn').textContent = 'Probar de nuevo';
+    const fd=new URLSearchParams();
+    fd.append('filename',lastFilename); fd.append('total_emails',results.length);
+    fd.append('status_counts_json',JSON.stringify(counts));
+    const res=await fetch(`${API_BASE}/api/jobs/submit`,{method:'POST',body:fd,headers:{...authHeaders(),'Content-Type':'application/x-www-form-urlencoded'}});
+    const data=await res.json();
+    if (!res.ok) throw new Error(data.detail||'Error al reportar lote');
+    $('creditsValue').textContent=data.credits_restantes;
+    $('ajustesCredits').textContent=data.credits_restantes;
+    toast(`✅ ${results.length} emails verificados`);
   } catch(e){
-    clearInterval(timerInterval);
-    box.className = 'status-box fail';
-    document.getElementById('statusIcon').textContent = '❌';
-    document.getElementById('statusTitle').textContent = 'Error al probar';
-    document.getElementById('statusDetail').textContent = e.message || 'Error desconocido';
-    document.getElementById('timerLabel').textContent = '';
-    document.getElementById('testBtn').textContent = 'Reintentar';
+    $('errorBoxVerify').innerHTML=`<div class="error-box">Error al reportar: ${e.message}</div>`;
+  } finally{
+    $('verifyBtn').disabled=false; $('verifyBtn').textContent='Verificar (SMTP real)';
   }
-
-  document.getElementById('testBtn').disabled = false;
-  testRunning = false;
 };
+
+$('verifyBtn').onclick=async()=>{
+  if (!currentToken){toast('Inicia sesión primero');return;}
+  let emails=[];
+  if (selectedFile?.emails){
+    emails=selectedFile.emails;
+  } else if (isPy()&&selectedFile?.path){
+    // escritorio: delegar a Python
+    startVerifyUI(null);
+    try{await pyApi().verify_batch(selectedFile.path);}
+    catch(e){clearInterval(verifyTimerID);$('errorBoxVerify').innerHTML=`<div class="error-box">${e.message}</div>`;$('verifyBtn').disabled=false;$('verifyBtn').textContent='Verificar (SMTP real)';}
+    return;
+  } else {toast('Carga un archivo o pega emails primero');return;}
+  if (!emails.length){toast('No hay emails para verificar');return;}
+  if (vPort25Open===false&&!confirm('El puerto 25 está bloqueado.\nLos resultados serán MX Error y se descontarán créditos.\n¿Continuar?'))return;
+  startVerifyUI(emails.length);
+  try{await nativeVerifyBatch(emails);}
+  catch(e){clearInterval(verifyTimerID);$('errorBoxVerify').innerHTML=`<div class="error-box">${e.message}</div>`;$('verifyBtn').disabled=false;$('verifyBtn').textContent='Verificar (SMTP real)';}
+};
+
+function startVerifyUI(total){
+  $('verifyBtn').disabled=true; $('verifyBtn').textContent='Verificando…';
+  $('errorBoxVerify').innerHTML='';
+  $('vProgressWrap').classList.remove('hidden'); $('detailCard').classList.remove('hidden');
+  $('resultsBody').innerHTML=''; Object.keys(liveCounts).forEach(k=>delete liveCounts[k]);
+  drawDonut({},0,total||1);
+  verifyStart=Date.now(); verifyTotal=total||0;
+  $('vTimingElapsed').textContent='—'; $('vTimingEta').textContent='—';
+  if (verifyTimerID)clearInterval(verifyTimerID);
+  verifyTimerID=setInterval(()=>updateTiming(Object.values(liveCounts).reduce((a,b)=>a+b,0),verifyTotal||1),1000);
+}
+
+function updateTiming(done,total){
+  if (!verifyStart)return;
+  const el=(Date.now()-verifyStart)/1000;
+  $('vTimingElapsed').textContent=`Transcurrido: ${fmtSec(el)}`;
+  if (done>0&&done<total){$('vTimingEta').textContent=`Restante: ${fmtSec((total-done)/(done/el))}`;}
+  else if (done>=total)$('vTimingEta').textContent='Completado ✅';
+}
+
+function appendRow(r){
+  const color=STATUS_COLORS[r.status]||'#6B7280';
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.email}</td>
+    <td><span class="badge-status" style="background:${color}22;color:${color};">${r.status}</span></td>
+    <td style="color:var(--ink-2);max-width:110px;overflow:hidden;text-overflow:ellipsis;">${r.detalle||'—'}</td>
+    <td style="text-align:center;">${r.toxicidad??'—'}</td>`;
+  $('resultsBody').appendChild(tr);
+  $('detailCard').scrollTop=$('detailCard').scrollHeight;
+}
+
+// detalle toggle
+$('toggleDetailBtn').onclick=()=>{
+  const w=$('detailTableWrap'); const h=w.classList.contains('hidden');
+  w.classList.toggle('hidden',!h);
+  $('toggleDetailBtn').textContent=h?'Ocultar':'Ver detalle';
+};
+
+// ── Donut ─────────────────────────────────────────────────────────────────────
+function drawDonut(counts,shown,total){
+  const svg=$('donutSvg'),R=80,CX=100,CY=100,SW=26,C=2*Math.PI*R;
+  let off=0,segs='';
+  STATUS_ORDER.forEach(s=>{
+    const n=counts[s]||0; if(!n)return;
+    const len=(n/(shown||1))*C;
+    segs+=`<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${STATUS_COLORS[s]}" stroke-width="${SW}" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 ${CX} ${CY})"/>`;
+    off+=len;
+  });
+  const pct=total>0?Math.round((shown/total)*100):0;
+  svg.innerHTML=`<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--border)" stroke-width="${SW}"/>
+    ${segs}
+    <text x="${CX}" y="${CY-6}" text-anchor="middle" font-size="22" font-weight="800" fill="var(--ink)">${shown}</text>
+    <text x="${CX}" y="${CY+14}" text-anchor="middle" font-size="13" fill="var(--ink-2)">de ${total}</text>
+    <text x="${CX}" y="${CY+30}" text-anchor="middle" font-size="12" fill="var(--ink-2)">${pct}%</text>`;
+  const leg=$('donutLegend'); leg.innerHTML='';
+  STATUS_ORDER.forEach(s=>{
+    const n=counts[s]||0; if(!n)return;
+    const d=document.createElement('div'); d.className='legend-item';
+    d.innerHTML=`<div class="legend-dot" style="background:${STATUS_COLORS[s]}"></div><span>${s}: <b>${n}</b></span>`;
+    leg.appendChild(d);
+  });
+}
+
+// ── Exportar CSV ──────────────────────────────────────────────────────────────
+$('exportBtn').onclick=()=>doExport(lastResults, lastFilename||'resultados_green.csv');
+
+async function doExport(results, filename){
+  if (!results||!results.length){toast('Nada que exportar');return;}
+  const csv=['email,status,detalle,toxicidad,señales_toxicidad',
+    ...results.map(r=>`"${r.email}","${r.status}","${(r.detalle||'').replace(/"/g,'""')}",${r.toxicidad},"${(r.señales_toxicidad||'').replace(/"/g,'""')}"`),
+  ].join('\n');
+  if (isPy()){
+    try{await pyApi().save_csv(csv,filename);return;}catch(_){}
+  }
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv'});
+  const file=new File([blob],filename,{type:'text/csv'});
+  if (navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:'Resultados Green Email Verifier'});return;}catch(_){}
+  }
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Exportaciones locales ─────────────────────────────────────────────────────
+function saveLocalExport(name, results){
+  const csv=['email,status,detalle,toxicidad,señales_toxicidad',
+    ...results.map(r=>`"${r.email}","${r.status}","${(r.detalle||'').replace(/"/g,'""')}",${r.toxicidad},"${(r.señales_toxicidad||'').replace(/"/g,'""')}"`),
+  ].join('\n');
+  const ts=new Date().toISOString().replace(/[:.]/g,'-').slice(0,16);
+  const exportName=`${ts}_${name}`;
+  localExports.unshift({name:exportName,date:new Date().toISOString(),results,csv});
+  // Limitar a 20 exports en memoria
+  if (localExports.length>20) localExports=localExports.slice(0,20);
+  // Persistir en localStorage si hay espacio
+  try { localStorage.setItem('gev_exports',JSON.stringify(localExports.map(e=>({name:e.name,date:e.date})))); } catch(_){}
+}
+
+async function renderExports(){
+  const search=$('exportSearch').value.toLowerCase();
+  const filtered=localExports.filter(e=>e.name.toLowerCase().includes(search));
+  const cont=$('exportaciones-content');
+  if (!filtered.length){
+    cont.innerHTML='<div class="empty-state"><div class="empty-icon">📁</div>Aún no se ha exportado ningún archivo en esta sesión.</div>';
+    return;
+  }
+  cont.innerHTML=filtered.map((e,i)=>`
+    <div class="lista-row">
+      <div class="lista-icon">📄</div>
+      <div class="lista-info">
+        <div class="lista-name">${e.name}</div>
+        <div class="lista-meta">${fmtDate(e.date)} · ${(e.results||[]).length} emails</div>
+      </div>
+      <div class="lista-actions">
+        <button class="btn-sm" onclick="doExport(localExports[${i}].results,'${e.name}')">⬇ CSV</button>
+      </div>
+    </div>`).join('');
+}
+$('exportSearch').addEventListener('input',renderExports);
+
+// Exponer doExport al ámbito global para los botones inline
+window.doExport=doExport;
+window.localExports=localExports;
+
+// ── Listas (historial del servidor) ──────────────────────────────────────────
+async function loadListas(){
+  if (!currentToken)return;
+  const cont=$('listasContent');
+  cont.innerHTML='<div style="padding:16px;text-align:center;color:var(--ink-2);">Cargando…</div>';
+  try {
+    const res=await fetch(`${API_BASE}/api/jobs/history`,{headers:authHeaders()});
+    if (!res.ok){cont.innerHTML='<div class="empty-state"><div class="empty-icon">⚠️</div>No se pudo cargar el historial.</div>';return;}
+    let jobs=await res.json();
+    const search=$('listasSearch').value.toLowerCase();
+    if (search) jobs=jobs.filter(j=>j.filename.toLowerCase().includes(search));
+    if (!jobs.length){cont.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div>Aún no hay lotes procesados.</div>';return;}
+    cont.innerHTML=jobs.map(j=>`
+      <div class="lista-row">
+        <div class="lista-icon">📋</div>
+        <div class="lista-info">
+          <div class="lista-name">${j.filename}</div>
+          <div class="lista-meta">${fmtDate(j.created_at)} · ${j.total_emails.toLocaleString()} correos</div>
+        </div>
+        <span class="badge-ok" style="white-space:nowrap;">✓ OK</span>
+      </div>`).join('');
+  } catch(e){ cont.innerHTML=`<div class="empty-state"><div class="empty-icon">⚠️</div>${e.message}</div>`; }
+}
+$('listasSearch').addEventListener('input',loadListas);
+$('refreshListasBtn').onclick=loadListas;
+
+// ── Créditos ──────────────────────────────────────────────────────────────────
+async function loadCreditos(){
+  if (!currentToken)return;
+  try {
+    const res=await fetch(`${API_BASE}/api/user/me`,{headers:authHeaders()});
+    if (!res.ok)return;
+    const user=await res.json();
+    $('creditosBigNumber').textContent=user.credits;
+    $('creditsValue').textContent=user.credits;
+    $('ajustesCredits').textContent=user.credits;
+    $('planNameLabel').textContent=user.plan?`Tu plan: ${user.plan}`:'Sin plan activo';
+    $('planBadgeMenu').textContent=user.plan?`Plan ${user.plan}`:'Sin plan';
+    $('planRenewLabel').textContent=user.plan_period_end
+      ?`Renovación: ${fmtDate(user.plan_period_end)}`
+      :'Compra un plan o créditos sueltos';
+    $('ajustesPlan').textContent=user.plan||'Sin plan';
+    const res2=await fetch(`${API_BASE}/api/jobs/history`,{headers:authHeaders()});
+    const jobs=res2.ok?await res2.json():[];
+    if (!jobs.length){$('consumoEmpty').classList.remove('hidden');$('consumoHistory').innerHTML='';return;}
+    $('consumoEmpty').classList.add('hidden');
+    $('consumoHistory').innerHTML=jobs.slice(0,8).map(j=>`
+      <div class="hist-row">
+        <div class="hist-icon">📄</div>
+        <div class="hist-meta">
+          <div class="hist-name">${j.filename}</div>
+          <div class="hist-date">${fmtDate(j.created_at)}</div>
+        </div>
+        <div class="hist-amount">−${j.total_emails.toLocaleString()}</div>
+      </div>`).join('');
+  } catch(e){ console.warn(e); }
+}
+$('viewPlansBtn').onclick=()=>{renderBilling();$('billingModal').classList.remove('hidden');};
+
+// ── Billing / Stripe ──────────────────────────────────────────────────────────
+function renderBilling(){
+  $('intervalMonthlyBtn').classList.toggle('active',billingInterval==='monthly');
+  $('intervalAnnualBtn').classList.toggle('active',billingInterval==='annual');
+  $('plansGrid').innerHTML=PLANS.map(p=>{
+    const price=billingInterval==='monthly'?p.monthly:p.annual;
+    const suffix=billingInterval==='monthly'?'/mes':'/año';
+    return `<div class="plan-card${p.popular?' popular':''}">
+      <div class="plan-card-header">
+        <div class="plan-name">${p.name}</div>
+        ${p.popular?'<span class="plan-popular-badge">Popular</span>':''}
+      </div>
+      <div class="plan-price">$${price.toFixed(2)}<span>${suffix}</span></div>
+      <div class="plan-credits">${p.credits.toLocaleString()} créditos/mes</div>
+      <button class="btn" data-plan="${p.key}" style="width:100%;">Suscribirme</button>
+    </div>`;
+  }).join('');
+  $('packsGrid').innerHTML=PACKS.map(k=>`
+    <div class="pack-card">
+      <div class="pack-name">${k.name}</div>
+      <div class="pack-price">$${k.price}</div>
+      <div class="pack-credits">${k.credits.toLocaleString()} créditos</div>
+      <button class="btn-sm" data-pack="${k.key}" style="width:100%;">Comprar</button>
+    </div>`).join('');
+  document.querySelectorAll('#plansGrid button').forEach(b=>b.onclick=()=>startCheckout({plan:b.dataset.plan,interval:billingInterval}));
+  document.querySelectorAll('#packsGrid button').forEach(b=>b.onclick=()=>startCheckout({pack:b.dataset.pack}));
+}
+
+async function startCheckout(params){
+  $('billingMsg').innerHTML='<div style="font-size:13px;color:var(--ink-2);">Preparando pago…</div>';
+  const fd=new URLSearchParams();
+  if (params.plan){fd.append('plan',params.plan);fd.append('interval',params.interval);}
+  if (params.pack) fd.append('pack',params.pack);
+  try {
+    const res=await fetch(`${API_BASE}/api/billing/checkout`,{method:'POST',headers:authHeaders(),body:fd});
+    if (!res.ok){const t=await res.text();throw new Error(t);}
+    const data=await res.json();
+    // Abrir URL de Stripe en navegador externo
+    if (isPy()) await pyApi().open_external(data.checkout_url);
+    else window.open(data.checkout_url,'_blank');
+    $('billingMsg').innerHTML='<div class="success-box">✅ Se abrió el pago en tu navegador. Vuelve aquí cuando termines y actualiza tus créditos.</div>';
+  } catch(e){
+    $('billingMsg').innerHTML=`<div class="error-box">No se pudo iniciar la compra: ${e.message}</div>`;
+  }
+}
+$('intervalMonthlyBtn').onclick=()=>{billingInterval='monthly';renderBilling();};
+$('intervalAnnualBtn').onclick=()=>{billingInterval='annual';renderBilling();};
+
+// ── Arranque ──────────────────────────────────────────────────────────────────
+let _booted=false;
+async function boot(){
+  if (_booted)return; _booted=true;
+  await initCapacitor();
+  checkPort25('login');
+  await loadSession();
+  if (currentToken&&currentEmail){
+    try {
+      const r=await fetch(`${API_BASE}/api/user/me`,{headers:authHeaders()});
+      if (!r.ok)throw new Error();
+      const u=await r.json();
+      showApp(u.email,u.credits,u.plan); return;
+    }catch(_){await clearSession();}
+  }
+  showLoginView();
+}
+
+document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,150));
+window.addEventListener('pywebviewready',boot);
+document.addEventListener('deviceready',boot,false);
 </script>
 </body>
 </html>
