@@ -628,10 +628,31 @@ $('savePrefBtn').onclick=()=>{
 };
 
 // ── Puente nativo ─────────────────────────────────────────────────────────────
+// Espera activa a que window.Capacitor.registerPlugin exista de verdad
+// (window.Capacitor puede existir antes de que el runtime completo cargue)
+async function waitForCapacitorRuntime(maxMs){
+  const start = Date.now();
+  let attempts = 0;
+  while (Date.now() - start < maxMs) {
+    if (window.Capacitor && typeof window.Capacitor.registerPlugin === 'function') {
+      diag('Capacitor runtime listo tras ' + (Date.now()-start) + 'ms (' + attempts + ' intentos)');
+      return true;
+    }
+    attempts++;
+    await new Promise(r => setTimeout(r, 150));
+  }
+  diag('Capacitor runtime NO listo tras ' + maxMs + 'ms (' + attempts + ' intentos)');
+  return false;
+}
+
 async function nativeCheckPort25(context){
   diag('checkPort25 start, Capacitor=' + !!window.Capacitor);
-  if (isAndroid() && window.Capacitor) {
-    // Usamos directamente Port25 — es el plugin que confirmamos que funciona
+  if (isAndroid()) {
+    const ready = await waitForCapacitorRuntime(10000);
+    if (!ready) {
+      window.onPort25Result({context, open:false, info:'Runtime Capacitor no cargo a tiempo'});
+      return;
+    }
     try {
       diag('Registrando Port25...');
       const P25 = window.Capacitor.registerPlugin('Port25');
@@ -651,7 +672,9 @@ async function nativeCheckPort25(context){
 }
 
 async function nativeVerifyBatch(emails){
-  if (isAndroid() && window.Capacitor) {
+  if (isAndroid()) {
+    const ready = await waitForCapacitorRuntime(10000);
+    if (!ready) throw new Error('Runtime Capacitor no disponible');
     const SmtpV = window.Capacitor.registerPlugin('SmtpVerifier');
     await SmtpV.verifyBatch({emails});
   } else if (isPy()) {
