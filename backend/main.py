@@ -18,7 +18,13 @@ from fastapi.responses import StreamingResponse
 import openpyxl
 import stripe
 
-from verifier import verify_email
+from verifier import (
+    verify_email,
+    EMAIL_REGEX,
+    DISPOSABLE_DOMAINS,
+    TYPO_DOMAINS,
+    get_mx_records,
+)
 from supabase import create_client, Client
 
 # ---------------------------------------------------------------------------
@@ -31,6 +37,26 @@ FRONTEND_ORIGIN     = os.getenv("FRONTEND_ORIGIN", "*")
 FREE_SIGNUP_CREDITS = int(os.getenv("FREE_SIGNUP_CREDITS", "100"))
 MAX_EMAILS_PER_JOB  = int(os.getenv("MAX_EMAILS_PER_JOB", "300"))
 WORKERS             = int(os.getenv("VERIFY_WORKERS", "20"))
+
+# ---------------------------------------------------------------------------
+# Estimado rápido de bounce (quick-estimate) — sin verificación SMTP real,
+# solo formato + dominio desechable/typo + MX + reputación histórica
+# acumulada en la tabla domain_reputation. Pensado para dar un resultado
+# instantáneo antes de que el usuario gaste créditos en la verificación real.
+# ---------------------------------------------------------------------------
+MAX_EMAILS_QUICK_ESTIMATE = int(os.getenv("MAX_EMAILS_QUICK_ESTIMATE", "50000"))
+
+# Proveedores grandes y conocidos: cuando no hay datos históricos propios
+# todavía para un dominio, se usa esta tasa base de bounce estimada en vez
+# de la genérica "dominio desconocido".
+KNOWN_SAFE_DOMAINS = {
+    "gmail.com": 0.01, "outlook.com": 0.02, "hotmail.com": 0.03,
+    "yahoo.com": 0.03, "icloud.com": 0.02, "aol.com": 0.04,
+    "live.com": 0.03, "msn.com": 0.03, "protonmail.com": 0.02,
+}
+# Tasa asumida para un dominio corporativo/desconocido sin historial propio
+# ni coincidencia con la lista de arriba, pero con MX válido.
+DEFAULT_UNKNOWN_DOMAIN_RATE = 0.12
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
@@ -422,6 +448,221 @@ def extract_emails_from_upload(filename: str, content: bytes):
     return unique
 
 
+def extract_emails_from_text(text: str):
+    """Extrae emails de texto plano (pegado directo), igual que en el cliente."""
+    import re as _re
+    found = _re.findall(r"[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+", text or "")
+    seen = set()
+    unique = []
+    for e in found:
+        key = e.lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(e)
+    return unique
+
+
+def get_domain_reputation_map(domains: list):
+    """Trae de Supabase las estadísticas históricas ya acumuladas para estos
+    dominios (de verificaciones reales previas de cualquier usuario)."""
+    if not domains:
+        return {}
+    try:
+        res = (
+            db().table("domain_reputation")
+            .select("domain,total_checked,total_bounced")
+            .in_("domain", domains)
+            .execute()
+        )
+        return {row["domain"]: row for row in res.data}
+    except Exception:
+        # Si la tabla no existe todavía (no se corrió la migración) o falla
+        # la consulta, seguimos sin datos históricos en vez de tumbar el
+        # endpoint completo.
+        return {}
+
+
+@app.post("/api/quick-estimate")
+def quick_estimate(
+    file: UploadFile = File(None),
+    emails_text: str = Form(None),
+    authorization: str = Header(None),
+):
+    """
+    Estimado de bounce INSTANTÁNEO, sin verificación SMTP real y SIN costo
+    de créditos. Agrupa por dominio único (no por email) para que sea rápido
+    incluso con listas grandes, usando:
+      1. Formato de email válido
+      2. Dominios desechables/temporales conocidos
+      3. Typos de dominio conocidos (gmial.com, etc.)
+      4. Registro MX (existe o no, sin conectar por SMTP)
+      5. Reputación histórica acumulada en domain_reputation, si ya se vio
+         ese dominio antes en una verificación real de cualquier usuario.
+    Pensado para mostrarse ANTES de que el usuario gaste créditos en la
+    verificación real.
+    """
+    user = get_user_from_token(authorization)
+
+    if file is not None:
+        content = file.file.read()
+        emails = extract_emails_from_upload(file.filename, content)
+    elif emails_text is not None:
+        emails = extract_emails_from_text(emails_text)
+    else:
+        raise HTTPException(400, "Envía un archivo o una lista de emails pegados")
+
+    if not emails:
+        raise HTTPException(400, "No se encontraron emails válidos")
+    if len(emails) > MAX_EMAILS_QUICK_ESTIMATE:
+        raise HTTPException(400, f"Límite de {MAX_EMAILS_QUICK_ESTIMATE} emails para el estimado rápido")
+
+    invalid_format = 0
+    by_domain = {}  # domain -> {"count": n, "emails_sample": [...]}
+
+    for email in emails:
+        e = email.strip()
+        if not EMAIL_REGEX.match(e):
+            invalid_format += 1
+            continue
+        domain = e.split("@", 1)[1].lower()
+        by_domain.setdefault(domain, 0)
+        by_domain[domain] += 1
+
+    unique_domains = list(by_domain.keys())
+    reputation_map = get_domain_reputation_map(unique_domains)
+
+    domains_out = []
+    no_mx_count = 0
+    disposable_count = 0
+    typo_count = 0
+    estimated_bounces = 0.0
+
+    # MX en paralelo — es la parte más lenta (una consulta DNS por dominio
+    # único, no por email), pero sigue siendo rápida comparado con SMTP real.
+    with ThreadPoolExecutor(max_workers=min(20, max(1, len(unique_domains)))) as pool:
+        mx_futures = {pool.submit(get_mx_records, d): d for d in unique_domains}
+        mx_results = {}
+        for future in as_completed(mx_futures):
+            d = mx_futures[future]
+            try:
+                mx_results[d] = future.result()
+            except Exception:
+                mx_results[d] = []
+
+    for domain, count in by_domain.items():
+        is_disposable = domain in DISPOSABLE_DOMAINS
+        is_typo = domain in TYPO_DOMAINS
+        mx = mx_results.get(domain)
+        has_mx = bool(mx)  # None (NXDOMAIN) o [] (sin MX) -> False
+
+        if is_disposable:
+            disposable_count += count
+        if is_typo:
+            typo_count += count
+        if not has_mx:
+            no_mx_count += count
+
+        rep = reputation_map.get(domain)
+        historical_rate = None
+        if rep and rep.get("total_checked", 0) >= 5:
+            historical_rate = rep["total_bounced"] / rep["total_checked"]
+
+        if not has_mx:
+            rate = 1.0
+            risk = "muy alto"
+            reason = "El dominio no tiene registros MX (no existe o no recibe correo)"
+        elif is_disposable:
+            rate = 0.9
+            risk = "muy alto"
+            reason = "Dominio de correo desechable/temporal"
+        elif is_typo:
+            rate = 0.8
+            risk = "alto"
+            reason = "Parece un typo de un dominio conocido (gmial.com, etc.)"
+        elif historical_rate is not None:
+            rate = historical_rate
+            risk = "bajo" if rate < 0.05 else ("medio" if rate < 0.2 else "alto")
+            reason = f"Basado en {rep['total_checked']} verificaciones reales previas de este dominio"
+        elif domain in KNOWN_SAFE_DOMAINS:
+            rate = KNOWN_SAFE_DOMAINS[domain]
+            risk = "bajo"
+            reason = "Proveedor de correo grande y conocido"
+        else:
+            rate = DEFAULT_UNKNOWN_DOMAIN_RATE
+            risk = "medio"
+            reason = "Dominio con MX válido pero sin historial propio todavía — estimado genérico"
+
+        estimated_bounces += rate * count
+        domains_out.append({
+            "domain": domain,
+            "count": count,
+            "has_mx": has_mx,
+            "disposable": is_disposable,
+            "typo": is_typo,
+            "historical_bounce_rate": historical_rate,
+            "estimated_bounce_rate": round(rate, 3),
+            "risk": risk,
+            "reason": reason,
+        })
+
+    domains_out.sort(key=lambda d: d["count"], reverse=True)
+    total = len(emails)
+    estimated_bounces += invalid_format  # el formato inválido siempre rebota
+
+    return {
+        "total_emails": total,
+        "unique_domains": len(unique_domains),
+        "invalid_format": invalid_format,
+        "disposable": disposable_count,
+        "typo_domain": typo_count,
+        "no_mx": no_mx_count,
+        "estimated_bounce_rate": round(estimated_bounces / total, 4) if total else 0,
+        "estimated_bounces": round(estimated_bounces),
+        "domains": domains_out,
+    }
+
+
+
+def update_domain_reputation_from_results(results: list):
+    """
+    Toma resultados de una verificación REAL (con status por email) y
+    actualiza la tabla domain_reputation con conteos agregados por dominio.
+    Nunca guarda los emails individuales, solo el dominio y cuántos de
+    'bounce' vs 'aceptados' se vieron.
+
+    Se llama siempre en segundo plano (try/except) para que un fallo aquí
+    nunca tumbe la respuesta real de la verificación al usuario.
+    """
+    BOUNCE_STATUSES = {"Rejected", "No MX", "SPAM Block", "Formato inválido"}
+    ACCEPTED_STATUSES = {"Accepted", "Catch-All"}
+
+    per_domain = {}
+    for r in results:
+        email = r.get("email", "")
+        if "@" not in email:
+            continue
+        domain = email.split("@", 1)[1].lower()
+        entry = per_domain.setdefault(domain, {"checked": 0, "bounced": 0, "accepted": 0})
+        entry["checked"] += 1
+        if r.get("status") in BOUNCE_STATUSES:
+            entry["bounced"] += 1
+        elif r.get("status") in ACCEPTED_STATUSES:
+            entry["accepted"] += 1
+
+    for domain, stats in per_domain.items():
+        try:
+            db().rpc("upsert_domain_reputation", {
+                "p_domain": domain,
+                "p_checked": stats["checked"],
+                "p_bounced": stats["bounced"],
+                "p_accepted": stats["accepted"],
+            }).execute()
+        except Exception:
+            # Si la función/tabla no existe todavía (falta correr la
+            # migración) simplemente no se acumula reputación esta vez.
+            pass
+
+
 @app.post("/api/verify")
 def verify_batch(
     file: UploadFile = File(...),
@@ -444,6 +685,11 @@ def verify_batch(
         futures = {pool.submit(verify_email, e): e for e in emails}
         for future in as_completed(futures):
             results.append(future.result())
+
+    try:
+        update_domain_reputation_from_results(results)
+    except Exception:
+        pass  # nunca debe afectar la respuesta al usuario
 
     new_balance = user["credits"] - len(emails)
     db().table("users").update({"credits": new_balance}).eq("email", user["email"]).execute()
