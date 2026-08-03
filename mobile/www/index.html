@@ -202,6 +202,11 @@ tr:last-child td{ border-bottom:none; }
     <p>Verificación SMTP real desde tu dispositivo</p>
   </div>
 
+  <!-- Panel de diagnóstico — quitar en producción -->
+  <div style="background:#1a1a2e;color:#00ff88;font-family:monospace;font-size:11px;padding:10px;margin:10px 16px;border-radius:8px;max-height:120px;overflow-y:auto;" id="diagPanel">
+    <div id="diagLog">Iniciando...</div>
+  </div>
+
   <div class="login-card" id="loginPanel">
     <h2>Iniciar sesión</h2>
     <div class="port25-bar" id="port25Bar">
@@ -554,6 +559,11 @@ let localExports = []; // [{name, date, csv}]
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
+function diag(msg){
+  const d = document.getElementById('diagLog');
+  if (d) d.innerHTML += '<br>' + new Date().toISOString().slice(11,19) + ' ' + msg;
+  console.log('[DIAG]', msg);
+}
 function toast(msg, ms=2500){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),ms); }
 function authHeaders(){ return { 'Authorization':`Bearer ${currentToken}` }; }
 function fmtSec(s){ s=Math.max(0,Math.round(s)); const m=Math.floor(s/60),r=s%60; return m>0?`${m}m ${r}s`:`${r}s`; }
@@ -561,29 +571,30 @@ function fmtDate(iso){ return new Date(iso).toLocaleString('es-MX',{day:'2-digit
 
 // ── Detección de entorno ──────────────────────────────────────────────────────
 function isAndroid(){
-  // window.Capacitor existe si capacitor.js cargó correctamente
-  // También detectamos por user-agent del WebView de Android
-  if (window.Capacitor) return true;
+  if (window.Capacitor) { diag('isAndroid: window.Capacitor OK'); return true; }
   const ua = navigator.userAgent || '';
-  return /Android/.test(ua) && (/wv/.test(ua) || /Version\/\d/.test(ua));
+  const byUA = /Android/.test(ua) && (/wv/.test(ua) || /Version\/\d/.test(ua));
+  diag('isAndroid: Capacitor=' + !!window.Capacitor + ' UA=' + ua.slice(0,60) + ' byUA=' + byUA);
+  return byUA;
 }
 function isPy(){ return !!(window.pywebview && window.pywebview.api); }
 function pyApi(){ return window.pywebview.api; }
 
 async function initCapacitor(){
-  if (!isAndroid()) return;
-  // Esperar hasta 2s a que window.Capacitor esté disponible
+  diag('initCapacitor start');
+  if (!isAndroid()) { diag('No es Android, skip'); return; }
   for (let i = 0; i < 20; i++) {
     if (window.Capacitor && window.Capacitor.registerPlugin) {
       try {
         SmtpVerifier = window.Capacitor.registerPlugin('SmtpVerifier');
-        console.log('SmtpVerifier registrado OK');
-      } catch(e){ console.warn('Capacitor registerPlugin error:', e); }
+        diag('SmtpVerifier OK en intento ' + i);
+      } catch(e){ diag('ERROR registerPlugin: ' + e.message); }
       return;
     }
+    diag('Esperando Capacitor... intento ' + i);
     await new Promise(r => setTimeout(r, 100));
   }
-  console.warn('window.Capacitor no disponible después de 2s');
+  diag('ERROR: window.Capacitor no disponible después de 2s');
 }
 
 // ── Sesión persistente ────────────────────────────────────────────────────────
@@ -626,9 +637,10 @@ $('savePrefBtn').onclick=()=>{
 
 // ── Puente nativo ─────────────────────────────────────────────────────────────
 async function nativeCheckPort25(context){
+  diag('checkPort25: isAndroid=' + isAndroid() + ' SmtpVerifier=' + !!SmtpVerifier);
   if (isAndroid()&&SmtpVerifier) await SmtpVerifier.checkPort25({context});
   else if (isPy()) await pyApi().check_port25(context);
-  else window.onPort25Result({context,open:false,info:'Versión web — SMTP no disponible aquí'});
+  else { diag('Fallback web!'); window.onPort25Result({context,open:false,info:'Versión web — SMTP no disponible aquí'}); }
 }
 async function nativeVerifyBatch(emails){
   if (isAndroid()&&SmtpVerifier) await SmtpVerifier.verifyBatch({emails});
