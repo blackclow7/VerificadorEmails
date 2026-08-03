@@ -566,8 +566,9 @@ function pyApi(){ return window.pywebview.api; }
 async function initCapacitor(){
   if (!isAndroid()) return;
   try {
-    const { registerPlugin } = await import('https://cdn.jsdelivr.net/npm/@capacitor/core@6/dist/capacitor.js');
-    SmtpVerifier = registerPlugin('SmtpVerifier');
+    // Capacitor inyecta registerPlugin en window.Capacitor directamente
+    // No necesitamos importar del CDN — funciona offline
+    SmtpVerifier = window.Capacitor.registerPlugin('SmtpVerifier');
   } catch(e){ console.warn('Capacitor init:', e); }
 }
 
