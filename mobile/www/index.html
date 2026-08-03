@@ -621,18 +621,19 @@ $('savePrefBtn').onclick=()=>{
 
 // ── Puente nativo ─────────────────────────────────────────────────────────────
 async function nativeCheckPort25(context){
-  diag('checkPort25 Capacitor=' + !!window.Capacitor);
+  diag('checkPort25 start, Capacitor=' + !!window.Capacitor);
   if (isAndroid() && window.Capacitor) {
+    // Usamos directamente Port25 — es el plugin que confirmamos que funciona
     try {
-      const SmtpV = window.Capacitor.registerPlugin('SmtpVerifier');
-      await SmtpV.checkPort25({context});
+      diag('Registrando Port25...');
+      const P25 = window.Capacitor.registerPlugin('Port25');
+      diag('Port25 registrado, llamando check()...');
+      const r = await P25.check();
+      diag('Port25 respondio: open=' + r.open);
+      window.onPort25Result({context, open: r.open, info: r.info});
     } catch(e){
-      diag('SmtpVerifier fallo, usando Port25: ' + e.message);
-      try {
-        const P25 = window.Capacitor.registerPlugin('Port25');
-        const r = await P25.check();
-        window.onPort25Result({context, open: r.open, info: r.info});
-      } catch(e2){ diag('Port25 fallo: ' + e2.message); }
+      diag('ERROR Port25: ' + e.message);
+      window.onPort25Result({context, open:false, info:'Error: ' + e.message});
     }
   } else if (isPy()) {
     await pyApi().check_port25(context);
