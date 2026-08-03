@@ -508,7 +508,10 @@ tr:last-child td{ border-bottom:none; }
 <div id="toast"></div>
 
 <!-- ══════════ SCRIPT ══════════ -->
-<script type="module">
+<!-- Capacitor bridge — incluido en el APK por npx cap sync -->
+<script src="capacitor.js"></script>
+<script>
+
 // ── Constantes ───────────────────────────────────────────────────────────────
 const API_BASE = "https://verificadoremails-api.onrender.com";
 const SUPABASE_URL  = 'https://wrdnqbjfrhcqynuvoiyy.supabase.co';
