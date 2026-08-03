@@ -199,6 +199,11 @@ class SmtpVerifierPlugin : Plugin() {
     // Lógica de verificación (equivalente a verify_email_local de Python)
     // =========================================================================
 
+    // Método público para AndroidBridge (JavaScript Interface directo)
+    fun verifyEmailPublic(email: String): String {
+        return verifyEmail(email).toString()
+    }
+
     private fun verifyEmail(email: String): JSObject {
         val (toxScore, toxReasons) = assessToxicity(email)
 

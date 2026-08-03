@@ -571,18 +571,16 @@ function fmtDate(iso){ return new Date(iso).toLocaleString('es-MX',{day:'2-digit
 
 // ── Detección de entorno ──────────────────────────────────────────────────────
 function isAndroid(){
-  if (window.Capacitor) { diag('isAndroid: window.Capacitor OK'); return true; }
-  const ua = navigator.userAgent || '';
-  const byUA = /Android/.test(ua) && (/wv/.test(ua) || /Version\/\d/.test(ua));
-  diag('isAndroid: Capacitor=' + !!window.Capacitor + ' UA=' + ua.slice(0,60) + ' byUA=' + byUA);
-  return byUA;
+  const ok = !!(window.AndroidBridge && window.AndroidBridge.isReady && window.AndroidBridge.isReady());
+  diag('isAndroid: AndroidBridge=' + ok);
+  return ok;
 }
 function isPy(){ return !!(window.pywebview && window.pywebview.api); }
 function pyApi(){ return window.pywebview.api; }
 
 async function initCapacitor(){
-  diag('initCapacitor start');
-  if (!isAndroid()) { diag('No es Android, skip'); return; }
+  diag('initCapacitor: AndroidBridge=' + !!window.AndroidBridge);
+}
   for (let i = 0; i < 50; i++) {
     if (window.Capacitor && window.Capacitor.registerPlugin) {
       try {
@@ -642,9 +640,17 @@ $('savePrefBtn').onclick=()=>{
 
 // ── Puente nativo ─────────────────────────────────────────────────────────────
 async function nativeCheckPort25(context){
-  // Si SmtpVerifier es null pero Capacitor ya está, intentar registrar de nuevo
-  if (isAndroid() && !SmtpVerifier && window.Capacitor && window.Capacitor.registerPlugin) {
-    try { SmtpVerifier = window.Capacitor.registerPlugin('SmtpVerifier'); diag('SmtpVerifier re-registrado!'); }
+  diag('checkPort25: isAndroid=' + isAndroid());
+  if (isAndroid()) {
+    diag('Llamando AndroidBridge.checkPort25...');
+    window.AndroidBridge.checkPort25(context);
+  } else if (isPy()) {
+    await pyApi().check_port25(context);
+  } else {
+    diag('Fallback web!');
+    window.onPort25Result({context:context,open:false,info:'Version web'});
+  }
+}
     catch(e){ diag('Re-registro fallido: ' + e.message); }
   }
   diag('checkPort25: isAndroid=' + isAndroid() + ' SmtpVerifier=' + !!SmtpVerifier + ' Capacitor=' + !!window.Capacitor);
@@ -653,7 +659,14 @@ async function nativeCheckPort25(context){
   else { diag('Fallback web!'); window.onPort25Result({context,open:false,info:'Versión web — SMTP no disponible aquí'}); }
 }
 async function nativeVerifyBatch(emails){
-  if (isAndroid()&&SmtpVerifier) await SmtpVerifier.verifyBatch({emails});
+  if (isAndroid()) {
+    window.AndroidBridge.verifyBatch(JSON.stringify(emails));
+  } else if (isPy()) {
+    throw new Error('En escritorio usa verify_batch(filePath)');
+  } else {
+    throw new Error('SMTP no disponible en version web');
+  }
+});
   else if (isPy()) throw new Error('En escritorio usa verify_batch(filePath)');
   else throw new Error('SMTP no disponible en versión web');
 }
