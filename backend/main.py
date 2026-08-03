@@ -671,14 +671,20 @@ def verify_batch(
     user = get_user_from_token(authorization)
 
     content = file.file.read()
-    emails  = extract_emails_from_upload(file.filename, content)
+    emails  = extract_emails_from_upload(file.filename, content)  # ya deduplicado (case-insensitive)
 
     if not emails:
         raise HTTPException(400, "No se encontraron emails válidos en el archivo")
     if len(emails) > MAX_EMAILS_PER_JOB:
         raise HTTPException(400, f"Límite de {MAX_EMAILS_PER_JOB} emails por lote. Divide el archivo.")
-    if user["credits"] < len(emails):
-        raise HTTPException(402, f"Créditos insuficientes. Necesitas {len(emails)}, tienes {user['credits']}.")
+
+    # Los emails con formato inválido (mala sintaxis) NO se verifican por MX/SMTP
+    # y NO cuentan para el cobro de créditos — solo aparecen en el resultado
+    # marcados como "Formato inválido" para que el usuario los vea y corrija.
+    chargeable_count = sum(1 for e in emails if EMAIL_REGEX.match(e.strip()))
+
+    if user["credits"] < chargeable_count:
+        raise HTTPException(402, f"Créditos insuficientes. Necesitas {chargeable_count}, tienes {user['credits']}.")
 
     results = []
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
@@ -691,7 +697,7 @@ def verify_batch(
     except Exception:
         pass  # nunca debe afectar la respuesta al usuario
 
-    new_balance = user["credits"] - len(emails)
+    new_balance = user["credits"] - chargeable_count
     db().table("users").update({"credits": new_balance}).eq("email", user["email"]).execute()
 
     # Privacidad: no persistimos los emails ni resultados individuales en la
@@ -705,7 +711,7 @@ def verify_batch(
         "id":            str(uuid.uuid4()),
         "user_email":    user["email"],
         "filename":      file.filename,
-        "total_emails":  len(emails),
+        "total_emails":  chargeable_count,
         "results":       None,
         "status_counts": status_counts,
         "source":        "web",
