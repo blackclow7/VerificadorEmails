@@ -202,11 +202,6 @@ tr:last-child td{ border-bottom:none; }
     <p>Verificación SMTP real desde tu dispositivo</p>
   </div>
 
-  <!-- Panel de diagnóstico — quitar en producción -->
-  <div style="background:#1a1a2e;color:#00ff88;font-family:monospace;font-size:11px;padding:10px;margin:10px 16px;border-radius:8px;max-height:120px;overflow-y:auto;" id="diagPanel">
-    <div id="diagLog">Iniciando...</div>
-  </div>
-
   <div class="login-card" id="loginPanel">
     <h2>Iniciar sesión</h2>
     <div class="port25-bar" id="port25Bar">
@@ -314,11 +309,12 @@ tr:last-child td{ border-bottom:none; }
       </div>
 
       <div id="detailCard" class="card hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
           <div style="font-weight:700;font-size:15px;">Resultados</div>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn-sm" id="toggleDetailBtn">Ver detalle</button>
-            <button class="btn-sm" id="exportBtn">⬇ CSV</button>
+            <button class="btn-sm" id="shareBtn">🔗 Compartir</button>
+            <button class="btn-sm" id="exportBtn">⬇ Excel</button>
           </div>
         </div>
         <div id="detailTableWrap" class="table-wrap hidden">
@@ -565,16 +561,12 @@ let localExports = []; // [{name, date, csv}]
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 window.addEventListener('error', (e) => {
-  const d = document.getElementById('diagLog');
-  if (d) d.innerHTML += '<br><b style="color:red">JS ERROR: ' + e.message + ' @' + e.filename + ':' + e.lineno + '</b>';
+  console.error('JS ERROR:', e.message, '@', e.filename + ':' + e.lineno);
 });
 window.addEventListener('unhandledrejection', (e) => {
-  const d = document.getElementById('diagLog');
-  if (d) d.innerHTML += '<br><b style="color:orange">PROMISE REJECT: ' + (e.reason && e.reason.message || e.reason) + '</b>';
+  console.error('PROMISE REJECT:', (e.reason && e.reason.message) || e.reason);
 });
 function diag(msg){
-  const d = document.getElementById('diagLog');
-  if (d) d.innerHTML += '<br>' + new Date().toISOString().slice(11,19) + ' ' + msg;
   console.log('[DIAG]', msg);
 }
 function extractErrorMessage(data){
@@ -814,6 +806,7 @@ function showApp(email,credits,plan){
   goToPage('verificador');
   checkPort25('verificador');
   loadCreditos();
+  startCreditsPolling();
 }
 
 const PAGES=['verificador','listas','exportaciones','creditos','ajustes'];
@@ -832,6 +825,7 @@ $('userCardBtn').onclick=(e)=>{e.stopPropagation();$('userMenu').classList.toggl
 document.addEventListener('click',()=>$('userMenu').classList.add('hidden'));
 async function doLogout(){
   try{await fetch(`${API_BASE}/api/auth/logout`,{method:'POST',headers:authHeaders()});}catch(_){}
+  stopCreditsPolling();
   await clearSession(); showLoginView(); checkPort25('login');
 }
 $('menuLogoutBtn').onclick=doLogout;
@@ -1064,28 +1058,72 @@ function drawDonut(counts,shown,total){
 
 // ── Exportar CSV ──────────────────────────────────────────────────────────────
 $('exportBtn').onclick=()=>doExport(lastResults, lastFilename||'resultados_green.csv');
+$('shareBtn').onclick=()=>doShare(lastResults, lastFilename||'resultados_green.csv');
+
+// Convierte los resultados a un archivo .xlsx real (no CSV) usando SheetJS,
+// y devuelve { base64, filename } listo para guardar o compartir.
+async function buildXlsx(results, filename){
+  const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+  const rows = [
+    ['email','status','detalle','toxicidad','señales_toxicidad'],
+    ...results.map(r => [r.email, r.status, r.detalle||'', r.toxicidad, r.señales_toxicidad||'']),
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Resultados');
+  const base64 = XLSX.write(wb, { type:'base64', bookType:'xlsx' });
+  const xlsxName = (filename||'resultados_green').replace(/\.[^.]+$/, '') + '.xlsx';
+  return { base64, filename: xlsxName };
+}
+
+function base64ToBlob(base64, mime){
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i=0; i<bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 async function doExport(results, filename){
   if (!results||!results.length){toast('Nada que exportar');return;}
-  const csv=['email,status,detalle,toxicidad,señales_toxicidad',
-    ...results.map(r=>`"${r.email}","${r.status}","${(r.detalle||'').replace(/"/g,'""')}",${r.toxicidad},"${(r.señales_toxicidad||'').replace(/"/g,'""')}"`),
-  ].join('\n');
+  const { base64, filename: xlsxName } = await buildXlsx(results, filename);
+
   if (isPy()){
-    try{await pyApi().save_csv(csv,filename);return;}catch(_){}
+    try{await pyApi().save_csv(base64, xlsxName);return;}catch(_){}
   }
-  if (window.AndroidBridge && window.AndroidBridge.shareCsv){
-    try{ window.AndroidBridge.shareCsv(csv, filename); toast('Abriendo selector para guardar/compartir…'); return; }
+  if (window.AndroidBridge && window.AndroidBridge.shareXlsx){
+    try{ window.AndroidBridge.shareXlsx(base64, xlsxName); toast('Abriendo selector para guardar/compartir…'); return; }
     catch(e){ toast('Error al exportar: ' + e.message); }
   }
-  const blob=new Blob(['\ufeff'+csv],{type:'text/csv'});
-  const file=new File([blob],filename,{type:'text/csv'});
+  const blob = base64ToBlob(base64, XLSX_MIME);
+  const file = new File([blob], xlsxName, { type: XLSX_MIME });
   if (navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
     try{await navigator.share({files:[file],title:'Resultados Green Email Verifier'});return;}catch(_){}
   }
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=filename;
+  const a=document.createElement('a'); a.href=url; a.download=xlsxName;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// Botón "Compartir" — misma acción que exportar, pero forzando siempre el
+// selector nativo de compartir (WhatsApp, Drive, correo, etc.) cuando esté
+// disponible, en vez de una descarga silenciosa.
+async function doShare(results, filename){
+  if (!results||!results.length){toast('Nada que compartir');return;}
+  const { base64, filename: xlsxName } = await buildXlsx(results, filename);
+
+  if (window.AndroidBridge && window.AndroidBridge.shareXlsx){
+    try{ window.AndroidBridge.shareXlsx(base64, xlsxName); toast('Abriendo selector para compartir…'); return; }
+    catch(e){ toast('Error al compartir: ' + e.message); }
+  }
+  const blob = base64ToBlob(base64, XLSX_MIME);
+  const file = new File([blob], xlsxName, { type: XLSX_MIME });
+  if (navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:'Resultados Green Email Verifier'});return;}catch(_){}
+  }
+  toast('Compartir no disponible en este dispositivo — usa Exportar');
 }
 
 // ── Exportaciones locales ─────────────────────────────────────────────────────
@@ -1118,13 +1156,15 @@ async function renderExports(){
         <div class="lista-meta">${fmtDate(e.date)} · ${(e.results||[]).length} emails</div>
       </div>
       <div class="lista-actions">
-        <button class="btn-sm" onclick="doExport(localExports[${i}].results,'${e.name}')">⬇ CSV</button>
+        <button class="btn-sm" onclick="doShare(localExports[${i}].results,'${e.name}')">🔗</button>
+        <button class="btn-sm" onclick="doExport(localExports[${i}].results,'${e.name}')">⬇ Excel</button>
       </div>
     </div>`).join('');
 }
 $('exportSearch').addEventListener('input',renderExports);
 
-// Exponer doExport al ámbito global para los botones inline
+// Exponer doExport/doShare al ámbito global para los botones inline
+window.doShare=doShare;
 window.doExport=doExport;
 window.localExports=localExports;
 
@@ -1155,6 +1195,41 @@ $('listasSearch').addEventListener('input',loadListas);
 $('refreshListasBtn').onclick=loadListas;
 
 // ── Créditos ──────────────────────────────────────────────────────────────────
+// Actualización ligera de créditos — solo pide /api/user/me (sin historial),
+// pensada para correr en segundo plano cada cierto tiempo y al volver a la
+// app, para que el saldo se vea igual sin importar desde qué dispositivo
+// (móvil, escritorio o web) se haya hecho la última verificación o compra.
+async function refreshCreditsOnly(){
+  if (!currentToken) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/user/me`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const user = await res.json();
+    currentCredits = user.credits;
+    $('creditsValue').textContent = user.credits;
+    const bigNum = $('creditosBigNumber'); if (bigNum) bigNum.textContent = user.credits;
+    const ajCred = $('ajustesCredits'); if (ajCred) ajCred.textContent = user.credits;
+    const planLabel = $('planNameLabel'); if (planLabel) planLabel.textContent = user.plan?`Tu plan: ${user.plan}`:'Sin plan activo';
+    const planBadge = $('planBadgeMenu'); if (planBadge) planBadge.textContent = user.plan?`Plan ${user.plan}`:'Sin plan';
+  } catch(e){ /* silencioso — es un refresco en segundo plano */ }
+}
+
+let creditsPollInterval = null;
+function startCreditsPolling(){
+  stopCreditsPolling();
+  creditsPollInterval = setInterval(refreshCreditsOnly, 20000);
+  document.addEventListener('visibilitychange', onVisibilityRefreshCredits);
+  window.addEventListener('focus', refreshCreditsOnly);
+}
+function stopCreditsPolling(){
+  if (creditsPollInterval){ clearInterval(creditsPollInterval); creditsPollInterval=null; }
+  document.removeEventListener('visibilitychange', onVisibilityRefreshCredits);
+  window.removeEventListener('focus', refreshCreditsOnly);
+}
+function onVisibilityRefreshCredits(){
+  if (!document.hidden) refreshCreditsOnly();
+}
+
 async function loadCreditos(){
   if (!currentToken)return;
   try {

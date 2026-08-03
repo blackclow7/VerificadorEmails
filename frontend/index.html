@@ -624,6 +624,7 @@ function showApp(email, credits, plan){
   loadListas();
   loadCreditos();
   loadAjustes();
+  startCreditsPolling();
 }
 
 function updatePlanBadge(plan){
@@ -665,6 +666,7 @@ $('userCardBtn').onclick = (e) => {
 document.addEventListener('click', () => $('userMenu').classList.add('hidden'));
 async function doLogout(){
   try { await fetch(`${API_BASE}/api/auth/logout`, { method:'POST', headers: authHeaders() }); } catch(e){}
+  stopCreditsPolling();
   clearSession();
   showLoginView();
 }
@@ -1057,6 +1059,39 @@ async function loadListas(){
 }
 
 // ── Página: Créditos ─────────────────────────────────────────────────────
+// Actualización ligera de créditos — solo pide /api/user/me (sin historial),
+// pensada para correr en segundo plano cada cierto tiempo y al volver a la
+// pestaña, para que el saldo se vea igual sin importar desde qué dispositivo
+// (móvil, escritorio o web) se haya hecho la última verificación o compra.
+async function refreshCreditsOnly(){
+  if (!currentToken) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/user/me`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const user = await res.json();
+    currentCredits = user.credits;
+    $('creditsValue').textContent = user.credits;
+    const bigNum = $('creditosBigNumber'); if (bigNum) bigNum.textContent = user.credits;
+    if (typeof updatePlanBadge === 'function') updatePlanBadge(user.plan);
+  } catch(e){ /* silencioso — es un refresco en segundo plano */ }
+}
+
+let creditsPollInterval = null;
+function startCreditsPolling(){
+  stopCreditsPolling();
+  creditsPollInterval = setInterval(refreshCreditsOnly, 20000);
+  document.addEventListener('visibilitychange', onVisibilityRefreshCredits);
+  window.addEventListener('focus', refreshCreditsOnly);
+}
+function stopCreditsPolling(){
+  if (creditsPollInterval){ clearInterval(creditsPollInterval); creditsPollInterval=null; }
+  document.removeEventListener('visibilitychange', onVisibilityRefreshCredits);
+  window.removeEventListener('focus', refreshCreditsOnly);
+}
+function onVisibilityRefreshCredits(){
+  if (!document.hidden) refreshCreditsOnly();
+}
+
 async function loadCreditos(){
   try {
     const res = await fetch(`${API_BASE}/api/user/me`, { headers: authHeaders() });
