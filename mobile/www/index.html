@@ -583,18 +583,23 @@ function pyApi(){ return window.pywebview.api; }
 async function initCapacitor(){
   diag('initCapacitor start');
   if (!isAndroid()) { diag('No es Android, skip'); return; }
-  // Esperar hasta 5s — el WebView Android puede tardar en inyectar Capacitor
   for (let i = 0; i < 50; i++) {
     if (window.Capacitor && window.Capacitor.registerPlugin) {
       try {
+        // Registrar ambos plugins
+        const Port25 = window.Capacitor.registerPlugin('Port25');
         SmtpVerifier = window.Capacitor.registerPlugin('SmtpVerifier');
-        diag('SmtpVerifier OK en intento ' + i + ' (' + (i*100) + 'ms)');
-      } catch(e){ diag('ERROR registerPlugin: ' + e.message); }
+        // Probar Port25 que sabemos que funciona
+        diag('Probando Port25...');
+        const test = await Port25.check();
+        diag('Port25 respondio: open=' + test.open + ' info=' + test.info);
+        diag('SmtpVerifier=' + !!SmtpVerifier);
+      } catch(e){ diag('ERROR: ' + e.message); }
       return;
     }
     await new Promise(r => setTimeout(r, 100));
   }
-  diag('ERROR: Capacitor no disponible después de 5s');
+  diag('ERROR: Capacitor no disponible despues de 5s');
 }
 
 // ── Sesión persistente ────────────────────────────────────────────────────────
