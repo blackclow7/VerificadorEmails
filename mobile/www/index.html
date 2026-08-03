@@ -661,6 +661,10 @@ async function nativeVerifyBatch(emails){
   }
 }
 
+function startPort25Progress(fillId){
+  const f=$(fillId); f.style.transition='none'; f.style.width='0%';
+  void f.offsetWidth; f.style.transition='width 6s linear'; f.style.width='100%';
+}
 function stopPort25Progress(fillId, ok){
   const f=$(fillId); f.style.transition='width .2s'; f.style.width='100%';
   f.style.background=ok?'var(--green)':'var(--red)';
