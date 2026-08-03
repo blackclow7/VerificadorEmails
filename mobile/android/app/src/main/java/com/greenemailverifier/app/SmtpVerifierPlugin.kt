@@ -168,13 +168,15 @@ class SmtpVerifierPlugin : Plugin() {
             var done = 0
 
             // Verifica en paralelo con WORKERS hilos, igual que Python
-            val futures = emails.map { email ->
-                executor.submit { verifyEmail(email) }
+            val futures: List<java.util.concurrent.Future<JSObject>> = emails.map { email ->
+                executor.submit<JSObject> { verifyEmail(email) }
             }
             for (f in futures) {
-                val result = try { f.get() } catch (e: Exception) {
+                val result: JSObject = try {
+                    f.get()
+                } catch (e: Exception) {
                     JSObject().put("email", "?").put("status", "MX Error")
-                        .put("detalle", e.message ?: "error").put("toxicidad", 0)
+                        .put("detalle", e.message ?: "error").put("toxicidad", 0) as JSObject
                 }
                 results.add(result)
                 done++
