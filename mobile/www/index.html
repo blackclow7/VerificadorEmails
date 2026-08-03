@@ -583,18 +583,18 @@ function pyApi(){ return window.pywebview.api; }
 async function initCapacitor(){
   diag('initCapacitor start');
   if (!isAndroid()) { diag('No es Android, skip'); return; }
-  for (let i = 0; i < 20; i++) {
+  // Esperar hasta 5s — el WebView Android puede tardar en inyectar Capacitor
+  for (let i = 0; i < 50; i++) {
     if (window.Capacitor && window.Capacitor.registerPlugin) {
       try {
         SmtpVerifier = window.Capacitor.registerPlugin('SmtpVerifier');
-        diag('SmtpVerifier OK en intento ' + i);
+        diag('SmtpVerifier OK en intento ' + i + ' (' + (i*100) + 'ms)');
       } catch(e){ diag('ERROR registerPlugin: ' + e.message); }
       return;
     }
-    diag('Esperando Capacitor... intento ' + i);
     await new Promise(r => setTimeout(r, 100));
   }
-  diag('ERROR: window.Capacitor no disponible después de 2s');
+  diag('ERROR: Capacitor no disponible después de 5s');
 }
 
 // ── Sesión persistente ────────────────────────────────────────────────────────
@@ -637,7 +637,12 @@ $('savePrefBtn').onclick=()=>{
 
 // ── Puente nativo ─────────────────────────────────────────────────────────────
 async function nativeCheckPort25(context){
-  diag('checkPort25: isAndroid=' + isAndroid() + ' SmtpVerifier=' + !!SmtpVerifier);
+  // Si SmtpVerifier es null pero Capacitor ya está, intentar registrar de nuevo
+  if (isAndroid() && !SmtpVerifier && window.Capacitor && window.Capacitor.registerPlugin) {
+    try { SmtpVerifier = window.Capacitor.registerPlugin('SmtpVerifier'); diag('SmtpVerifier re-registrado!'); }
+    catch(e){ diag('Re-registro fallido: ' + e.message); }
+  }
+  diag('checkPort25: isAndroid=' + isAndroid() + ' SmtpVerifier=' + !!SmtpVerifier + ' Capacitor=' + !!window.Capacitor);
   if (isAndroid()&&SmtpVerifier) await SmtpVerifier.checkPort25({context});
   else if (isPy()) await pyApi().check_port25(context);
   else { diag('Fallback web!'); window.onPort25Result({context,open:false,info:'Versión web — SMTP no disponible aquí'}); }
@@ -1202,17 +1207,14 @@ async function boot(){
 // En Android esperamos a deviceready (Capacitor lo dispara cuando el WebView está listo)
 // En escritorio esperamos pywebviewready
 // En web usamos DOMContentLoaded con delay
-if (window.Capacitor) {
-  // Ya está listo
-  boot();
-} else {
-  document.addEventListener('deviceready', boot, false);
-  window.addEventListener('pywebviewready', boot);
-  document.addEventListener('DOMContentLoaded', () => {
-    // Dar tiempo a Capacitor para inyectar window.Capacitor
-    setTimeout(() => { if (!window._booted) boot(); }, 300);
-  });
-}
+// Arranque — esperamos a deviceready que Capacitor dispara cuando está listo
+document.addEventListener('deviceready', () => { diag('deviceready!'); boot(); }, false);
+window.addEventListener('pywebviewready', boot);
+document.addEventListener('DOMContentLoaded', () => {
+  diag('DOMContentLoaded UA=' + navigator.userAgent.slice(0,80));
+  // Fallback: si deviceready no llega en 4s, arrancar de todas formas
+  setTimeout(() => { if (!window._booted) { diag('Timeout fallback boot'); boot(); } }, 4000);
+});
 </script>
 </body>
 </html>
