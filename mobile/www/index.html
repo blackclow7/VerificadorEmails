@@ -559,6 +559,14 @@ let localExports = []; // [{name, date, csv}]
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
+window.addEventListener('error', (e) => {
+  const d = document.getElementById('diagLog');
+  if (d) d.innerHTML += '<br><b style="color:red">JS ERROR: ' + e.message + ' @' + e.filename + ':' + e.lineno + '</b>';
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const d = document.getElementById('diagLog');
+  if (d) d.innerHTML += '<br><b style="color:orange">PROMISE REJECT: ' + (e.reason && e.reason.message || e.reason) + '</b>';
+});
 function diag(msg){
   const d = document.getElementById('diagLog');
   if (d) d.innerHTML += '<br>' + new Date().toISOString().slice(11,19) + ' ' + msg;
@@ -1185,18 +1193,27 @@ $('intervalAnnualBtn').onclick=()=>{billingInterval='annual';renderBilling();};
 window._booted=false;
 async function boot(){
   if (window._booted)return; window._booted=true;
-  await initCapacitor();
-  checkPort25('login');
-  await loadSession();
-  if (currentToken&&currentEmail){
-    try {
-      const r=await fetch(`${API_BASE}/api/user/me`,{headers:authHeaders()});
-      if (!r.ok)throw new Error();
-      const u=await r.json();
-      showApp(u.email,u.credits,u.plan); return;
-    }catch(_){await clearSession();}
+  try {
+    diag('boot() iniciado');
+    await initCapacitor();
+    diag('initCapacitor OK, llamando checkPort25...');
+    checkPort25('login').then(()=>diag('checkPort25 promise resuelta')).catch(e=>diag('checkPort25 promise ERROR: '+e.message));
+    diag('checkPort25 disparado (no bloqueante)');
+    await loadSession();
+    diag('loadSession OK, token=' + !!currentToken);
+    if (currentToken&&currentEmail){
+      try {
+        const r=await fetch(`${API_BASE}/api/user/me`,{headers:authHeaders()});
+        if (!r.ok)throw new Error();
+        const u=await r.json();
+        showApp(u.email,u.credits,u.plan); return;
+      }catch(_){await clearSession();}
+    }
+    showLoginView();
+    diag('boot() completado, login visible');
+  } catch(e) {
+    diag('ERROR FATAL en boot(): ' + e.message + ' | stack: ' + (e.stack||'').slice(0,200));
   }
-  showLoginView();
 }
 
 // En Android esperamos a deviceready (Capacitor lo dispara cuando el WebView está listo)
