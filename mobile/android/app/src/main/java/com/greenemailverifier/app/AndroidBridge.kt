@@ -197,7 +197,7 @@ class AndroidBridge(private val activity: Activity, private val webView: WebView
         val (toxScore, toxReasons) = assessToxicity(email)
 
         if (!EMAIL_REGEX.matches(email)) {
-            return result(email, "Rejected", "Formato invalido", toxScore, toxReasons)
+            return result(email, "Formato inválido", "No cumple formato usuario@dominio", toxScore, toxReasons)
         }
 
         val domain = email.substringAfter("@").lowercase()

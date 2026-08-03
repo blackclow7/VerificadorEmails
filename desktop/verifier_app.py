@@ -291,7 +291,7 @@ def verify_email_local(email):
     tox_score, tox_reasons = assess_toxicity(email)
 
     if not EMAIL_REGEX.match(email):
-        return {"email": email, "status": "Rejected", "detalle": "Formato inválido",
+        return {"email": email, "status": "Formato inválido", "detalle": "No cumple formato usuario@dominio",
                 "toxicidad": tox_score, "señales_toxicidad": tox_reasons}
 
     domain    = email.split("@", 1)[1].lower()
@@ -420,12 +420,14 @@ class Api:
         Cuenta cuántos emails hay en el archivo ANTES de verificar, para que
         el frontend pueda comparar contra los créditos disponibles y avisar
         al usuario si no le van a alcanzar, sin gastar tiempo verificando.
+        También devuelve la lista completa de emails, para poder mandarla
+        al endpoint /api/quick-estimate (estimado rápido, gratis, sin SMTP).
         """
         try:
             emails = extract_emails_from_file(file_path)
-            return {"total": len(emails)}
+            return {"total": len(emails), "emails": emails}
         except Exception as e:
-            return {"total": 0, "error": str(e)}
+            return {"total": 0, "emails": [], "error": str(e)}
 
     def verify_batch(self, file_path):
         """

@@ -406,6 +406,16 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
             </div>
             <button class="btn-outline" id="vChangeFileBtn">Cambiar archivo</button>
           </div>
+
+          <div class="hidden" id="quickEstimateCard" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <div style="font-weight:700;font-size:15px;">🔍 Estimado rápido</div>
+              <button class="btn-outline" id="refreshEstimateBtn">↻ Actualizar</button>
+            </div>
+            <div id="quickEstimateBody" style="font-size:13px;color:var(--ink-2);">Calculando…</div>
+          </div>
+          <button class="btn-outline" id="viewEstimateBtn" style="width:100%;margin-bottom:16px;">🔍 Ver estimado rápido (gratis)</button>
+
           <button class="btn" id="verifyBtn" style="margin-bottom:20px;">Verificar lote</button>
 
           <div class="hidden" id="vProgressWrap">
@@ -898,7 +908,9 @@ async function selectFile(f){
     try {
       const text = await f.text();
       const EMAIL_RE = /[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+/g;
-      const count = new Set(text.match(EMAIL_RE) || []).size;
+      const seenLower = new Set();
+      (text.match(EMAIL_RE) || []).forEach(e => seenLower.add(e.trim().toLowerCase()));
+      const count = seenLower.size;
       selectedFileEmailCount = count;
       if (count > currentCredits){
         $('vFileSub').innerHTML = `<span style="color:var(--red);font-weight:700;">${count} emails encontrados — créditos insuficientes (tienes ${currentCredits})</span>`;
@@ -908,6 +920,7 @@ async function selectFile(f){
       }
     } catch(e){ /* si falla el conteo, se deja pasar sin bloquear */ }
   }
+  runQuickEstimate();
 }
 $('vChangeFileBtn').onclick = () => {
   selectedFile = null;
@@ -915,7 +928,56 @@ $('vChangeFileBtn').onclick = () => {
   $('vFileChosen').classList.add('hidden');
   $('vFilePicker').classList.remove('hidden');
   fileInput.value = '';
+  $('quickEstimateCard').classList.add('hidden');
 };
+
+// ── Estimado rápido de bounce (gratis, sin verificación SMTP real) ──────────
+async function runQuickEstimate(){
+  if (!selectedFile || !currentToken) return;
+  $('quickEstimateCard').classList.remove('hidden');
+  $('quickEstimateBody').innerHTML = 'Calculando…';
+  try {
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+    const res = await fetch(`${API_BASE}/api/quick-estimate`, {
+      method:'POST', body:fd, headers: authHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Error al calcular el estimado');
+    renderQuickEstimate(data);
+  } catch(e){
+    $('quickEstimateBody').innerHTML = `<span style="color:var(--red);">No se pudo calcular el estimado: ${e.message}</span>`;
+  }
+}
+
+function renderQuickEstimate(data){
+  const pct = Math.round(data.estimated_bounce_rate * 100);
+  const color = pct < 5 ? 'var(--green)' : pct < 20 ? 'var(--amber)' : 'var(--red)';
+  const topDomains = data.domains.slice(0, 8).map(d => {
+    const dPct = Math.round(d.estimated_bounce_rate * 100);
+    const riskColor = d.risk==='bajo'?'var(--green)':d.risk==='medio'?'var(--amber)':'var(--red)';
+    return `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bg);">
+      <span>${d.domain} (${d.count})</span>
+      <span style="color:${riskColor};font-weight:700;">~${dPct}%</span></div>`;
+  }).join('');
+  $('quickEstimateBody').innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+      <span style="font-size:28px;font-weight:800;color:${color};">~${pct}%</span>
+      <span>bounce estimado (${data.estimated_bounces} de ${data.total_emails})</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px;font-size:12px;">
+      <span>📧 ${data.total_emails} emails</span>
+      <span>🌐 ${data.unique_domains} dominios</span>
+      ${data.no_mx>0?`<span style="color:var(--red);">🚫 ${data.no_mx} sin MX</span>`:''}
+      ${data.disposable>0?`<span style="color:var(--red);">🗑️ ${data.disposable} desechables</span>`:''}
+      ${data.typo_domain>0?`<span style="color:var(--amber);">✏️ ${data.typo_domain} con typo</span>`:''}
+    </div>
+    <div style="font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:4px;">Top dominios</div>
+    ${topDomains}
+    <div style="font-size:11px;color:var(--ink-2);margin-top:8px;">Este estimado es gratis y no consume créditos. Para resultados exactos, verifica de verdad.</div>`;
+}
+$('viewEstimateBtn').onclick = runQuickEstimate;
+$('refreshEstimateBtn').onclick = runQuickEstimate;
 
 const STATUS_COLORS = {
   'MX válido':          '#1F8A4C',
