@@ -572,6 +572,15 @@ function diag(msg){
   if (d) d.innerHTML += '<br>' + new Date().toISOString().slice(11,19) + ' ' + msg;
   console.log('[DIAG]', msg);
 }
+function extractErrorMessage(data){
+  if (!data) return 'Error desconocido';
+  if (typeof data.detail === 'string') return data.detail;
+  if (Array.isArray(data.detail)) {
+    return data.detail.map(d => d.msg || JSON.stringify(d)).join(', ');
+  }
+  if (data.detail) return JSON.stringify(data.detail);
+  return 'Error desconocido';
+}
 function toast(msg, ms=2500){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),ms); }
 function authHeaders(){ return { 'Authorization':`Bearer ${currentToken}` }; }
 function fmtSec(s){ s=Math.max(0,Math.round(s)); const m=Math.floor(s/60),r=s%60; return m>0?`${m}m ${r}s`:`${r}s`; }
@@ -703,10 +712,10 @@ $('loginBtn').onclick=async()=>{
   if (!email||!pass){$('loginErrorBox').innerHTML='<div class="error-box">Completa todos los campos</div>';return;}
   $('loginBtn').disabled=true; $('loginBtn').textContent='Entrando…';
   try {
-    const fd=new URLSearchParams(); fd.append('username',email); fd.append('password',pass);
+    const fd=new URLSearchParams(); fd.append('email',email); fd.append('password',pass);
     const res=await fetch(`${API_BASE}/api/auth/login`,{method:'POST',body:fd,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
     const data=await res.json();
-    if (!res.ok) throw new Error(data.detail||'Error al iniciar sesión');
+    if (!res.ok) throw new Error(extractErrorMessage(data));
     await saveSession(data.access_token,email);
     $('loginErrorBox').innerHTML='';
     showApp(email,data.credits??0,data.plan);
@@ -729,7 +738,7 @@ $('registerBtn').onclick=async()=>{
     const fd=new URLSearchParams(); fd.append('email',email); fd.append('password',p1);
     const res=await fetch(`${API_BASE}/api/auth/register`,{method:'POST',body:fd,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
     const data=await res.json();
-    if (!res.ok) throw new Error(data.detail||'Error al registrar');
+    if (!res.ok) throw new Error(extractErrorMessage(data));
     $('registerErrorBox').innerHTML=`<div class="success-box">✅ ${data.message||'Cuenta creada. Ya puedes iniciar sesión.'}</div>`;
     setTimeout(()=>{$('registerPanel').classList.add('hidden');$('loginPanel').classList.remove('hidden');},1800);
   } catch(e){$('registerErrorBox').innerHTML=`<div class="error-box">${e.message}</div>`;}
@@ -917,7 +926,7 @@ window.onVerifyComplete=async function(results){
     fd.append('status_counts_json',JSON.stringify(counts));
     const res=await fetch(`${API_BASE}/api/jobs/submit`,{method:'POST',body:fd,headers:{...authHeaders(),'Content-Type':'application/x-www-form-urlencoded'}});
     const data=await res.json();
-    if (!res.ok) throw new Error(data.detail||'Error al reportar lote');
+    if (!res.ok) throw new Error(extractErrorMessage(data));
     $('creditsValue').textContent=data.credits_restantes;
     $('ajustesCredits').textContent=data.credits_restantes;
     toast(`✅ ${results.length} emails verificados`);
