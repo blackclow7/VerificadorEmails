@@ -508,8 +508,6 @@ tr:last-child td{ border-bottom:none; }
 <div id="toast"></div>
 
 <!-- ══════════ SCRIPT ══════════ -->
-<!-- Capacitor bridge — incluido en el APK por npx cap sync -->
-<script src="capacitor.js"></script>
 <script>
 
 // ── Constantes ───────────────────────────────────────────────────────────────
@@ -562,17 +560,30 @@ function fmtSec(s){ s=Math.max(0,Math.round(s)); const m=Math.floor(s/60),r=s%60
 function fmtDate(iso){ return new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
 
 // ── Detección de entorno ──────────────────────────────────────────────────────
-function isAndroid(){ return !!window.Capacitor; }
+function isAndroid(){
+  // window.Capacitor existe si capacitor.js cargó correctamente
+  // También detectamos por user-agent del WebView de Android
+  if (window.Capacitor) return true;
+  const ua = navigator.userAgent || '';
+  return /Android/.test(ua) && (/wv/.test(ua) || /Version\/\d/.test(ua));
+}
 function isPy(){ return !!(window.pywebview && window.pywebview.api); }
 function pyApi(){ return window.pywebview.api; }
 
 async function initCapacitor(){
   if (!isAndroid()) return;
-  try {
-    // Capacitor inyecta registerPlugin en window.Capacitor directamente
-    // No necesitamos importar del CDN — funciona offline
-    SmtpVerifier = window.Capacitor.registerPlugin('SmtpVerifier');
-  } catch(e){ console.warn('Capacitor init:', e); }
+  // Esperar hasta 2s a que window.Capacitor esté disponible
+  for (let i = 0; i < 20; i++) {
+    if (window.Capacitor && window.Capacitor.registerPlugin) {
+      try {
+        SmtpVerifier = window.Capacitor.registerPlugin('SmtpVerifier');
+        console.log('SmtpVerifier registrado OK');
+      } catch(e){ console.warn('Capacitor registerPlugin error:', e); }
+      return;
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
+  console.warn('window.Capacitor no disponible después de 2s');
 }
 
 // ── Sesión persistente ────────────────────────────────────────────────────────
