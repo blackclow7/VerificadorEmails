@@ -393,6 +393,10 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
             .csv o .xlsx con una columna de emails
             <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
           </div>
+          <div style="margin:14px 0 6px;font-size:13px;color:var(--ink-2);text-align:center;">— o pega emails directamente —</div>
+          <textarea id="emailPasteArea" rows="5" placeholder="email1@dominio.com&#10;email2@dominio.com&#10;…"
+            style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px;font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box;"></textarea>
+          <button class="btn-outline" id="pasteVerifyBtn" style="width:100%;justify-content:center;margin-top:8px;">Usar emails pegados</button>
         </div>
         <div class="hidden" id="vFileChosen">
           <div class="file-chosen">
@@ -554,9 +558,11 @@ const $ = (id) => document.getElementById(id);
 
 let currentToken = null;
 let currentEmail = null;
+let currentCredits = 0;
 let resetToken   = null;
 let lastResults  = null;
 let lastFilename = null;
+let selectedFileEmailCount = null;
 
 // ── Sesión ───────────────────────────────────────────────────────────────
 function saveSession(token, email){
@@ -573,6 +579,26 @@ function clearSession(){
   currentToken = null; currentEmail = null;
   try { localStorage.removeItem('ged_token'); localStorage.removeItem('ged_email'); } catch(e){}
 }
+
+// ── Recordarme (email + contraseña, guardados en localStorage del navegador)
+function saveRememberedCredentials(email, password){
+  try { localStorage.setItem('ged_remember_email', email); localStorage.setItem('ged_remember_password', password); } catch(e){}
+}
+function clearRememberedCredentials(){
+  try { localStorage.removeItem('ged_remember_email'); localStorage.removeItem('ged_remember_password'); } catch(e){}
+}
+function loadRememberedCredentials(){
+  try {
+    const email = localStorage.getItem('ged_remember_email');
+    const password = localStorage.getItem('ged_remember_password');
+    if (email && password){
+      $('emailInput').value = email;
+      $('passwordInput').value = password;
+      $('rememberCheckbox').checked = true;
+    }
+  } catch(e){}
+}
+
 function authHeaders(){ return { 'Authorization': `Bearer ${currentToken}` }; }
 function showError(msg){ $('errorBox').innerHTML = `<div class="error-box">${msg}</div>`; }
 function clearError(){ $('errorBox').innerHTML = ''; }
@@ -588,6 +614,7 @@ function showApp(email, credits, plan){
   currentEmail = email;
   $('loginView').classList.add('hidden');
   $('appShell').classList.remove('hidden');
+  currentCredits = credits;
   $('creditsValue').textContent = credits;
   $('userCardEmail').textContent = email;
   $('userCardPlan').textContent = plan ? `Plan ${plan}` : 'Sin plan activo';
@@ -675,6 +702,11 @@ $('loginBtn').onclick = async () => {
     if (!res.ok) throw new Error(data.detail || 'Error al iniciar sesión');
     currentToken = data.access_token;
     saveSession(currentToken, data.email);
+    if ($('rememberCheckbox').checked){
+      saveRememberedCredentials(email, password);
+    } else {
+      clearRememberedCredentials();
+    }
     showApp(data.email, data.credits, data.plan);
   } catch(e){
     showError(e.message);
@@ -827,17 +859,57 @@ dropzone.addEventListener('drop', (e) => {
 });
 fileInput.addEventListener('change', () => { if (fileInput.files.length) selectFile(fileInput.files[0]); });
 
-function selectFile(f){
+// ── Pegar emails directamente (sin necesidad de archivo) ──────────────────
+$('pasteVerifyBtn').onclick = () => {
+  const raw = $('emailPasteArea').value;
+  const EMAIL_RE = /[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+/g;
+  const emails = [...new Set(raw.match(EMAIL_RE) || [])];
+  if (!emails.length){
+    $('errorBoxVerify').innerHTML = '<div class="error-box">No se encontraron emails válidos en el texto pegado.</div>';
+    return;
+  }
+  // Construimos un archivo de texto virtual para reutilizar exactamente
+  // el mismo flujo de verificación (y el mismo conteo/validación de
+  // créditos) que ya usa /api/verify con archivos reales.
+  const blob = new Blob([emails.join('\n')], { type: 'text/plain' });
+  const file = new File([blob], 'pegado.txt', { type: 'text/plain' });
+  selectFile(file);
+};
+
+async function selectFile(f){
   selectedFile = f;
+  selectedFileEmailCount = null;
   $('vFilePicker').classList.add('hidden');
   $('vFileChosen').classList.remove('hidden');
   $('vFileName').textContent = f.name;
   $('vFileSub').textContent = 'Listo para verificar';
   $('vProgressWrap').classList.add('hidden');
   $('detailCard').classList.add('hidden');
+  $('errorBoxVerify').innerHTML = '';
+
+  // Conteo previo de emails para CSV/TXT (texto plano) — permite avisar
+  // de créditos insuficientes ANTES de gastar tiempo verificando.
+  // Para .xlsx/.xls no se cuenta aquí (requeriría parsear binario);
+  // el backend igual valida los créditos al recibir el archivo.
+  const name = f.name.toLowerCase();
+  if (name.endsWith('.csv') || name.endsWith('.txt')){
+    try {
+      const text = await f.text();
+      const EMAIL_RE = /[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+/g;
+      const count = new Set(text.match(EMAIL_RE) || []).size;
+      selectedFileEmailCount = count;
+      if (count > currentCredits){
+        $('vFileSub').innerHTML = `<span style="color:var(--red);font-weight:700;">${count} emails encontrados — créditos insuficientes (tienes ${currentCredits})</span>`;
+        $('errorBoxVerify').innerHTML = `<div class="error-box">No tienes créditos suficientes para verificar este archivo. Necesitas ${count} créditos y tienes ${currentCredits}. Compra más créditos o usa un archivo más pequeño.</div>`;
+      } else {
+        $('vFileSub').textContent = `${count} emails encontrados — listo para verificar`;
+      }
+    } catch(e){ /* si falla el conteo, se deja pasar sin bloquear */ }
+  }
 }
 $('vChangeFileBtn').onclick = () => {
   selectedFile = null;
+  selectedFileEmailCount = null;
   $('vFileChosen').classList.add('hidden');
   $('vFilePicker').classList.remove('hidden');
   fileInput.value = '';
@@ -853,6 +925,10 @@ const STATUS_LABELS_ORDER = ['MX válido','Sin MX','Dominio inexistente','Format
 
 $('verifyBtn').onclick = async () => {
   if (!selectedFile || !currentToken) return;
+  if (selectedFileEmailCount !== null && selectedFileEmailCount > currentCredits){
+    $('errorBoxVerify').innerHTML = `<div class="error-box">No tienes créditos suficientes. Necesitas ${selectedFileEmailCount} créditos y tienes ${currentCredits}. Ve a la sección Créditos para comprar más.</div>`;
+    return;
+  }
   $('errorBoxVerify').innerHTML = '';
   $('verifyBtn').disabled = true;
   $('verifyBtn').textContent = 'Verificando…';
@@ -864,6 +940,7 @@ $('verifyBtn').onclick = async () => {
     const data = await res.json();
     lastResults  = data.resultados;
     lastFilename = selectedFile.name;
+    currentCredits = data.credits_restantes;
     $('creditsValue').textContent = data.credits_restantes;
     animateResults(data.resultados);
     renderResultsTable(data.resultados);
@@ -1104,8 +1181,9 @@ if (currentToken && currentEmail){
   fetch(`${API_BASE}/api/user/me`, { headers: authHeaders() })
     .then(r => { if (!r.ok) throw new Error(); return r.json(); })
     .then(user => showApp(user.email, user.credits, user.plan))
-    .catch(() => { clearSession(); showLoginView(); });
+    .catch(() => { clearSession(); loadRememberedCredentials(); showLoginView(); });
 } else {
+  loadRememberedCredentials();
   showLoginView();
 }
 </script>

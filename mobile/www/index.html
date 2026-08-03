@@ -218,6 +218,10 @@ tr:last-child td{ border-bottom:none; }
     <div id="loginErrorBox"></div>
     <div class="field"><label>Correo electrónico</label><input type="email" id="loginEmail" placeholder="tu@email.com" autocomplete="email"></div>
     <div class="field"><label>Contraseña</label><input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin:-6px 0 14px;">
+      <input type="checkbox" id="rememberCheckbox" checked style="width:16px;height:16px;">
+      <label for="rememberCheckbox" style="font-size:13px;color:var(--ink-2);cursor:pointer;">Recordarme</label>
+    </div>
     <button class="btn" id="loginBtn" disabled>Iniciar sesión</button>
     <button class="btn-ghost" id="goRegisterBtn">¿No tienes cuenta? Regístrate</button>
     <p style="text-align:center;margin-top:14px;font-size:13px;"><a href="#" id="forgotBtn" style="color:var(--green);text-decoration:none;font-weight:600;">¿Olvidaste tu contraseña?</a></p>
@@ -543,6 +547,7 @@ const STATUS_ORDER = ['Accepted','Catch-All','Rejected','No MX','SPAM Block','Ti
 
 // ── Estado ───────────────────────────────────────────────────────────────────
 let currentToken = null, currentEmail = null;
+let currentCredits = 0;
 let port25Open = null, vPort25Open = null;
 let selectedFile = null;
 let lastResults = null, lastFilename = null;
@@ -615,6 +620,25 @@ async function clearSession(){
   currentToken=null; currentEmail=null;
   if (isPy()){ try { await pyApi().delete_credential('access_token'); await pyApi().delete_credential('user_email'); } catch(_){} }
   else { try { localStorage.removeItem('gev_token'); localStorage.removeItem('gev_email'); } catch(_){} }
+}
+
+// ── Recordarme (email + contraseña) ───────────────────────────────────────
+function saveRememberedCredentials(email, password){
+  try { localStorage.setItem('gev_remember_email', email); localStorage.setItem('gev_remember_password', password); } catch(_){}
+}
+function clearRememberedCredentials(){
+  try { localStorage.removeItem('gev_remember_email'); localStorage.removeItem('gev_remember_password'); } catch(_){}
+}
+function loadRememberedCredentials(){
+  try {
+    const email = localStorage.getItem('gev_remember_email');
+    const password = localStorage.getItem('gev_remember_password');
+    if (email && password){
+      $('loginEmail').value = email;
+      $('loginPass').value = password;
+      $('rememberCheckbox').checked = true;
+    }
+  } catch(_){}
 }
 
 // Preferencias
@@ -717,6 +741,11 @@ $('loginBtn').onclick=async()=>{
     const data=await res.json();
     if (!res.ok) throw new Error(extractErrorMessage(data));
     await saveSession(data.access_token,email);
+    if ($('rememberCheckbox').checked){
+      saveRememberedCredentials(email, pass);
+    } else {
+      clearRememberedCredentials();
+    }
     $('loginErrorBox').innerHTML='';
     showApp(email,data.credits??0,data.plan);
   } catch(e){
@@ -772,6 +801,7 @@ function showApp(email,credits,plan){
   currentEmail=email;
   $('loginView').classList.add('hidden');
   $('appShell').classList.remove('hidden');
+  currentCredits=credits;
   $('creditsValue').textContent=credits;
   $('userAvatar').textContent=email.slice(0,2).toUpperCase();
   $('userMenuEmail').textContent=email;
@@ -890,7 +920,15 @@ async function parseFileToEmails(file){
 
 function selectFileUI(name,sub){
   $('vFilePicker').classList.add('hidden'); $('vFileChosen').classList.remove('hidden');
-  $('vFileName').textContent=name; $('vFileSub').textContent=sub;
+  $('vFileName').textContent=name;
+  const count = selectedFile?.emails?.length ?? null;
+  if (count !== null && count > currentCredits){
+    $('vFileSub').innerHTML = `<span style="color:var(--red);font-weight:700;">${sub} — créditos insuficientes (tienes ${currentCredits})</span>`;
+    $('errorBoxVerify').innerHTML = `<div class="error-box">No tienes créditos suficientes para verificar este archivo. Necesitas ${count} créditos y tienes ${currentCredits}. Compra más créditos o usa un archivo más pequeño.</div>`;
+  } else {
+    $('vFileSub').textContent=sub;
+    $('errorBoxVerify').innerHTML='';
+  }
   $('vProgressWrap').classList.add('hidden'); $('detailCard').classList.add('hidden');
 }
 $('vChangeFileBtn').onclick=()=>{ selectedFile=null; $('vFileChosen').classList.add('hidden'); $('vFilePicker').classList.remove('hidden'); };
@@ -927,6 +965,7 @@ window.onVerifyComplete=async function(results){
     const res=await fetch(`${API_BASE}/api/jobs/submit`,{method:'POST',body:fd,headers:{...authHeaders(),'Content-Type':'application/x-www-form-urlencoded'}});
     const data=await res.json();
     if (!res.ok) throw new Error(extractErrorMessage(data));
+    currentCredits=data.credits_restantes;
     $('creditsValue').textContent=data.credits_restantes;
     $('ajustesCredits').textContent=data.credits_restantes;
     toast(`✅ ${results.length} emails verificados`);
@@ -950,6 +989,10 @@ $('verifyBtn').onclick=async()=>{
     return;
   } else {toast('Carga un archivo o pega emails primero');return;}
   if (!emails.length){toast('No hay emails para verificar');return;}
+  if (emails.length > currentCredits){
+    $('errorBoxVerify').innerHTML=`<div class="error-box">No tienes créditos suficientes. Necesitas ${emails.length} créditos y tienes ${currentCredits}. Ve a la sección Créditos para comprar más.</div>`;
+    return;
+  }
   if (vPort25Open===false&&!confirm('El puerto 25 está bloqueado.\nLos resultados serán MX Error y se descontarán créditos.\n¿Continuar?'))return;
   startVerifyUI(emails.length);
   try{await nativeVerifyBatch(emails);}
@@ -1029,6 +1072,10 @@ async function doExport(results, filename){
   ].join('\n');
   if (isPy()){
     try{await pyApi().save_csv(csv,filename);return;}catch(_){}
+  }
+  if (window.AndroidBridge && window.AndroidBridge.shareCsv){
+    try{ window.AndroidBridge.shareCsv(csv, filename); toast('Abriendo selector para guardar/compartir…'); return; }
+    catch(e){ toast('Error al exportar: ' + e.message); }
   }
   const blob=new Blob(['\ufeff'+csv],{type:'text/csv'});
   const file=new File([blob],filename,{type:'text/csv'});
@@ -1115,6 +1162,7 @@ async function loadCreditos(){
     if (!res.ok)return;
     const user=await res.json();
     $('creditosBigNumber').textContent=user.credits;
+    currentCredits=user.credits;
     $('creditsValue').textContent=user.credits;
     $('ajustesCredits').textContent=user.credits;
     $('planNameLabel').textContent=user.plan?`Tu plan: ${user.plan}`:'Sin plan activo';
@@ -1208,6 +1256,7 @@ async function boot(){
         showApp(u.email,u.credits,u.plan); return;
       }catch(_){await clearSession();}
     }
+    loadRememberedCredentials();
     showLoginView();
     diag('boot() completado, login visible');
   } catch(e) {

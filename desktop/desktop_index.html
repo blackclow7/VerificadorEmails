@@ -422,6 +422,10 @@ label.field-label{ display:block; font-size:13px; font-weight:600; margin-bottom
               <button class="btn-outline" id="dropzoneChooseBtn" type="button">Elegir archivo</button>
             </div>
           </div>
+          <div style="margin:14px 0 6px;font-size:13px;color:var(--ink-2);text-align:center;">— o pega emails directamente —</div>
+          <textarea id="emailPasteArea" rows="5" placeholder="email1@dominio.com&#10;email2@dominio.com&#10;…"
+            style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px;font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box;"></textarea>
+          <button class="btn-outline" id="pasteVerifyBtn" style="width:100%;justify-content:center;margin-top:8px;">Usar emails pegados</button>
         </div>
         <div class="hidden" id="vFileChosen">
           <div class="file-chosen">
@@ -595,6 +599,8 @@ const $ = (id) => document.getElementById(id);
 
 let currentToken = null;
 let currentEmail = null;
+let currentCredits = 0;
+let selectedFileEmailCount = null;
 let resetToken   = null;
 let lastResults  = null;
 let lastFilename = null;
@@ -618,6 +624,32 @@ async function clearSession(){
   currentToken = null; currentEmail = null;
   try { await pyApi().delete_credential('access_token'); await pyApi().delete_credential('user_email'); } catch(e){}
 }
+
+// ── Recordarme (email + contraseña, guardados en Windows Credential Manager)─
+async function saveRememberedCredentials(email, password){
+  try {
+    await pyApi().set_credential('remember_email', email);
+    await pyApi().set_credential('remember_password', password);
+  } catch(e){}
+}
+async function clearRememberedCredentials(){
+  try {
+    await pyApi().delete_credential('remember_email');
+    await pyApi().delete_credential('remember_password');
+  } catch(e){}
+}
+async function loadRememberedCredentials(){
+  try {
+    const email    = await pyApi().get_credential('remember_email');
+    const password = await pyApi().get_credential('remember_password');
+    if (email && password){
+      $('emailInput').value = email;
+      $('passwordInput').value = password;
+      $('rememberCheckbox').checked = true;
+    }
+  } catch(e){}
+}
+
 function authHeaders(){ return { 'Authorization': `Bearer ${currentToken}` }; }
 function showError(msg){ $('errorBox').innerHTML = `<div class="error-box">${msg}</div>`; }
 function clearError(){ $('errorBox').innerHTML = ''; }
@@ -720,6 +752,7 @@ function showLoginView(){
 }
 function showApp(email, credits, plan){
   currentEmail = email;
+  currentCredits = credits;
   $('loginView').classList.add('hidden');
   $('appShell').classList.remove('hidden');
   $('creditsValue').textContent = credits;
@@ -814,6 +847,11 @@ $('loginBtn').onclick = async () => {
     if (!res.ok) throw new Error(data.detail || 'Error al iniciar sesión');
     currentToken = data.access_token;
     await saveSession(currentToken, data.email);
+    if ($('rememberCheckbox').checked){
+      await saveRememberedCredentials(email, password);
+    } else {
+      await clearRememberedCredentials();
+    }
     showApp(data.email, data.credits, data.plan);
   } catch(e){
     showError(e.message);
@@ -968,18 +1006,54 @@ async function chooseFile(){
 
 function selectFile(path){
   selectedFilePath = path;
+  selectedFileEmailCount = null;
   const name = path.split(/[\\/]/).pop();
   $('vFilePicker').classList.add('hidden');
   $('vFileChosen').classList.remove('hidden');
   $('vFileName').textContent = name;
-  $('vFileSub').textContent = 'Listo para verificar por SMTP real';
+  $('vFileSub').textContent = 'Contando emails…';
   $('vProgressWrap').classList.add('hidden');
   $('detailCard').classList.add('hidden');
+  $('errorBoxVerify').innerHTML = '';
+
+  pyApi().count_emails_in_file(path).then(info => {
+    selectedFileEmailCount = info.total;
+    if (info.total > currentCredits){
+      $('vFileSub').innerHTML = '<span style="color:var(--red);font-weight:700;">' + info.total + ' emails encontrados — creditos insuficientes (tienes ' + currentCredits + ')</span>';
+      $('errorBoxVerify').innerHTML = '<div class="error-box">No tienes creditos suficientes para verificar este archivo. Necesitas ' + info.total + ' creditos y tienes ' + currentCredits + '. Compra mas creditos o usa un archivo mas pequeno.</div>';
+    } else {
+      $('vFileSub').textContent = info.total + ' emails encontrados — listo para verificar por SMTP real';
+    }
+  }).catch(() => {
+    $('vFileSub').textContent = 'Listo para verificar por SMTP real';
+  });
 }
 $('vChangeFileBtn').onclick = () => {
   selectedFilePath = null;
   $('vFileChosen').classList.add('hidden');
   $('vFilePicker').classList.remove('hidden');
+};
+
+// Pegar emails directamente (sin necesidad de archivo real)
+$('pasteVerifyBtn').onclick = async () => {
+  const text = $('emailPasteArea').value;
+  if (!text.trim()){
+    $('errorBoxVerify').innerHTML = '<div class="error-box">Pega al menos un email antes de continuar.</div>';
+    return;
+  }
+  $('pasteVerifyBtn').disabled = true;
+  try {
+    const info = await pyApi().save_pasted_emails(text);
+    if (!info.path || !info.total){
+      $('errorBoxVerify').innerHTML = '<div class="error-box">No se encontraron emails validos en el texto pegado.</div>';
+      return;
+    }
+    await selectFile(info.path);
+  } catch(e){
+    $('errorBoxVerify').innerHTML = `<div class="error-box">${e.message}</div>`;
+  } finally {
+    $('pasteVerifyBtn').disabled = false;
+  }
 };
 
 // Estados reales de verificación SMTP (idénticos a los que ya usaba la app)
@@ -1082,6 +1156,7 @@ window.onVerifyComplete = async function(results){
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Error al reportar el lote');
+    currentCredits = data.credits_restantes;
     $('creditsValue').textContent = data.credits_restantes;
 
     await saveLocalJob(currentEmail, lastFilename, results);
@@ -1099,6 +1174,11 @@ window.onVerifyComplete = async function(results){
 
 $('verifyBtn').onclick = async () => {
   if (!selectedFilePath || !currentToken) return;
+
+  if (selectedFileEmailCount !== null && selectedFileEmailCount > currentCredits){
+    $('errorBoxVerify').innerHTML = '<div class="error-box">No tienes creditos suficientes. Necesitas ' + selectedFileEmailCount + ' creditos y tienes ' + currentCredits + '. Ve a la seccion Creditos para comprar mas.</div>';
+    return;
+  }
 
   if (verifierPort25Open === false){
     if (!confirm(
@@ -1447,6 +1527,7 @@ async function boot(){
       return;
     } catch(e){ await clearSession(); }
   }
+  await loadRememberedCredentials();
   showLoginView();
 }
 

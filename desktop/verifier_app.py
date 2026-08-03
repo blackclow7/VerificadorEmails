@@ -34,6 +34,7 @@ import string
 import smtplib
 import socket
 import pathlib
+import tempfile
 import threading
 import time
 import webbrowser
@@ -396,6 +397,36 @@ class Api:
         return {"started": True}
 
     # ── Verificación SMTP real, con progreso en vivo empujado al HTML ───
+    def save_pasted_emails(self, text):
+        """
+        Guarda una lista de emails pegados directamente en la app en un
+        archivo temporal .txt, para poder reutilizar exactamente el mismo
+        flujo (count_emails_in_file + verify_batch) que con un archivo real.
+        """
+        try:
+            emails = re.findall(r"[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+", text)
+            emails = list(dict.fromkeys(emails))  # quita duplicados preservando orden
+            if not emails:
+                return {"path": None, "total": 0}
+            fd, path = tempfile.mkstemp(suffix=".txt", prefix="pegado_")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write("\n".join(emails))
+            return {"path": path, "total": len(emails)}
+        except Exception as e:
+            return {"path": None, "total": 0, "error": str(e)}
+
+    def count_emails_in_file(self, file_path):
+        """
+        Cuenta cuántos emails hay en el archivo ANTES de verificar, para que
+        el frontend pueda comparar contra los créditos disponibles y avisar
+        al usuario si no le van a alcanzar, sin gastar tiempo verificando.
+        """
+        try:
+            emails = extract_emails_from_file(file_path)
+            return {"total": len(emails)}
+        except Exception as e:
+            return {"total": 0, "error": str(e)}
+
     def verify_batch(self, file_path):
         """
         Tampoco bloquea: arranca la verificación completa en un hilo aparte

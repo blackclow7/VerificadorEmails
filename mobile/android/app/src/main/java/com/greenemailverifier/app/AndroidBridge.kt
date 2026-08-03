@@ -76,6 +76,41 @@ class AndroidBridge(private val activity: Activity, private val webView: WebView
     }
 
     // =========================================================================
+    // shareCsv — llamado desde JS: window.AndroidBridge.shareCsv(csvContent, filename)
+    // Guarda el CSV en el almacenamiento de la app y abre el selector nativo
+    // de Android para compartir o guardar el archivo (Drive, WhatsApp, etc).
+    // =========================================================================
+    @JavascriptInterface
+    fun shareCsv(csvContent: String, filename: String) {
+        activity.runOnUiThread {
+            try {
+                val safeCsv = "\uFEFF" + csvContent  // BOM para que Excel abra bien los acentos
+                val dir = java.io.File(activity.cacheDir, "exports")
+                if (!dir.exists()) dir.mkdirs()
+                val file = java.io.File(dir, filename)
+                file.writeText(safeCsv, Charsets.UTF_8)
+
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    activity,
+                    "${activity.packageName}.fileprovider",
+                    file
+                )
+
+                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                activity.startActivity(
+                    android.content.Intent.createChooser(shareIntent, "Guardar o compartir CSV")
+                )
+            } catch (e: Exception) {
+                runJs("window.onShareCsvError && window.onShareCsvError(${JSONObject.quote(e.message ?: "error")})")
+            }
+        }
+    }
+
+    // =========================================================================
     // checkPort25 — llamado desde JS: window.AndroidBridge.checkPort25(context)
     // Resultado vía window.onPort25Result({context, open, info})
     // =========================================================================
