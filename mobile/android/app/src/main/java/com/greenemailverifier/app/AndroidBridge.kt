@@ -256,8 +256,31 @@ class AndroidBridge(private val activity: Activity, private val webView: WebView
         }
     }
 
+    // Android no expone /etc/resolv.conf como Linux/Windows, así que dnsjava
+    // no puede autodetectar servidores DNS del sistema. Se configuran
+    // explícitamente resolvers públicos (Google + Cloudflare) para que
+    // Lookup.run() realmente pueda resolver los registros MX.
+    private var resolversConfigured = false
+    private fun ensureResolvers() {
+        if (resolversConfigured) return
+        try {
+            val r1 = org.xbill.DNS.SimpleResolver("8.8.8.8")
+            r1.setTimeout(java.time.Duration.ofSeconds(6))
+            val r2 = org.xbill.DNS.SimpleResolver("1.1.1.1")
+            r2.setTimeout(java.time.Duration.ofSeconds(6))
+            val r3 = org.xbill.DNS.SimpleResolver("8.8.4.4")
+            r3.setTimeout(java.time.Duration.ofSeconds(6))
+            val extResolver = org.xbill.DNS.ExtendedResolver(arrayOf(r1, r2, r3))
+            Lookup.setDefaultResolver(extResolver)
+        } catch (e: Exception) {
+            // Si falla la configuración, Lookup intentará su comportamiento por defecto
+        }
+        resolversConfigured = true
+    }
+
     private fun getMxRecords(domain: String): List<String>? {
         mxCache[domain]?.let { return it }
+        ensureResolvers()
         return try {
             val lookup = Lookup(domain, Type.MX)
             val records = lookup.run()
