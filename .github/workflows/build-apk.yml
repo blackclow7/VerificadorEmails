@@ -37,6 +37,9 @@ jobs:
         working-directory: mobile
         run: npx cap sync android
 
+      - name: Restaurar index.html correcto (el cap sync lo sobreescribe)
+        run: cp mobile/www/index.html mobile/android/app/src/main/assets/public/index.html
+
       - name: Dar permisos de ejecución a gradlew
         working-directory: mobile/android
         run: chmod +x gradlew
